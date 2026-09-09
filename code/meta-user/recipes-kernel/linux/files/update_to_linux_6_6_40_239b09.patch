@@ -1,0 +1,27 @@
+diff --git a/drivers/infiniband/core/uverbs_cmd.c b/drivers/infiniband/core/uverbs_cmd.c
+index b0ede126e463..a1c47b063ece 100755
+--- a/drivers/infiniband/core/uverbs_cmd.c
++++ b/drivers/infiniband/core/uverbs_cmd.c
+@@ -713,7 +713,7 @@ static int ib_uverbs_reg_mr_ex(struct uverbs_attr_bundle *attrs)
+ 	if (IS_ERR(uobj))
+ 		return PTR_ERR(uobj);
+ 
+-	ret = ib_check_mr_access(cmd.access_flags);
++	ret = ib_check_mr_access(ib_dev, cmd.access_flags);
+ 	if (ret)
+ 		return ret;
+ 
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_dma.c b/drivers/net/ethernet/xilinx/xilinx_axienet_dma.c
+index 75e92f5dc360..22468f90d25f 100755
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_dma.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_dma.c
+@@ -495,8 +495,7 @@ void __maybe_unused axienet_dma_err_handler(unsigned long data)
+ 		axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
+ 	}
+ 
+-	if (lp->axienet_config->mactype == XAXIENET_1_2p5G &&
+-	    !lp->eth_hasnobuf) {
++	if (lp->axienet_config->mactype == XAXIENET_1G && !lp->eth_hasnobuf) {
+ 		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
+ 		if (axienet_status & XAE_INT_RXRJECT_MASK)
+ 			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);

@@ -1,0 +1,145 @@
+diff --git a/drivers/infiniband/core/device.c b/drivers/infiniband/core/device.c
+old mode 100644
+new mode 100755
+index 010718738d04..4f5565ece1af
+--- a/drivers/infiniband/core/device.c
++++ b/drivers/infiniband/core/device.c
+@@ -2703,6 +2703,7 @@ void ib_set_device_ops(struct ib_device *dev, const struct ib_device_ops *ops)
+ 	SET_DEVICE_OP(dev_ops, reg_dm_mr);
+ 	SET_DEVICE_OP(dev_ops, reg_user_mr);
+ 	SET_DEVICE_OP(dev_ops, reg_user_mr_dmabuf);
++	SET_DEVICE_OP(dev_ops, reg_user_mr_ex);
+ 	SET_DEVICE_OP(dev_ops, req_notify_cq);
+ 	SET_DEVICE_OP(dev_ops, rereg_user_mr);
+ 	SET_DEVICE_OP(dev_ops, resize_cq);
+diff --git a/drivers/infiniband/core/uverbs_cmd.c b/drivers/infiniband/core/uverbs_cmd.c
+old mode 100644
+new mode 100755
+index e836c9c477f6..3b8f189b2f93
+--- a/drivers/infiniband/core/uverbs_cmd.c
++++ b/drivers/infiniband/core/uverbs_cmd.c
+@@ -692,6 +692,83 @@ int ib_uverbs_dealloc_xrcd(struct ib_uobject *uobject, struct ib_xrcd *xrcd,
+ 	return 0;
+ }
+ 
++static int ib_uverbs_reg_mr_ex(struct uverbs_attr_bundle *attrs)
++{
++	struct ib_uverbs_reg_mr_resp resp = {};
++	struct ib_uverbs_reg_mr      cmd;
++	struct ib_uobject           *uobj;
++	struct ib_pd                *pd;
++	struct ib_mr                *mr;
++	int                          ret;
++	struct ib_device *ib_dev;
++
++	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
++	if (ret)
++		return ret;
++
++	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK))
++		return -EINVAL;
++
++	ret = ib_check_mr_access(cmd.access_flags);
++	if (ret)
++		return ret;
++
++	uobj = uobj_alloc(UVERBS_OBJECT_MR, attrs, &ib_dev);
++	if (IS_ERR(uobj))
++		return PTR_ERR(uobj);
++
++	pd = uobj_get_obj_read(pd, UVERBS_OBJECT_PD, cmd.pd_handle, attrs);
++	if (!pd) {
++		ret = -EINVAL;
++		goto err_free;
++	}
++
++	if (cmd.access_flags & IB_ACCESS_ON_DEMAND) {
++		if (!(pd->device->attrs.device_cap_flags &
++		      IB_DEVICE_ON_DEMAND_PAGING)) {
++			pr_debug("ODP support not available\n");
++			ret = -EINVAL;
++			goto err_put;
++		}
++	}
++
++	mr = pd->device->ops.reg_user_mr_ex(pd, cmd.start, cmd.length, cmd.hca_va,
++					 cmd.access_flags,
++					 &attrs->driver_udata);
++	if (IS_ERR(mr)) {
++		ret = PTR_ERR(mr);
++		goto err_put;
++	}
++
++	mr->device  = pd->device;
++	mr->pd      = pd;
++	mr->type    = IB_MR_TYPE_USER;
++	mr->dm	    = NULL;
++	mr->sig_attrs = NULL;
++	mr->uobject = uobj;
++	atomic_inc(&pd->usecnt);
++	mr->iova = cmd.hca_va;
++
++	rdma_restrack_new(&mr->res, RDMA_RESTRACK_MR);
++	rdma_restrack_set_name(&mr->res, NULL);
++	rdma_restrack_add(&mr->res);
++
++	uobj->object = mr;
++	uobj_put_obj_read(pd);
++	uobj_finalize_uobj_create(uobj, attrs);
++
++	resp.lkey = mr->lkey;
++	resp.rkey = mr->rkey;
++	resp.mr_handle = uobj->id;
++	return uverbs_response(attrs, &resp, sizeof(resp));
++
++err_put:
++	uobj_put_obj_read(pd);
++err_free:
++	uobj_alloc_abort(uobj, attrs);
++	return ret;
++}
++
+ static int ib_uverbs_reg_mr(struct uverbs_attr_bundle *attrs)
+ {
+ 	struct ib_uverbs_reg_mr_resp resp = {};
+@@ -3848,6 +3925,12 @@ const struct uapi_definition uverbs_def_write_intf[] = {
+ 			UAPI_DEF_WRITE_UDATA_IO(struct ib_uverbs_reg_mr,
+ 						struct ib_uverbs_reg_mr_resp),
+ 			UAPI_DEF_METHOD_NEEDS_FN(reg_user_mr)),
++		DECLARE_UVERBS_WRITE(
++			IB_USER_VERBS_CMD_REG_MR_EX,
++			ib_uverbs_reg_mr_ex,
++			UAPI_DEF_WRITE_UDATA_IO(struct ib_uverbs_reg_mr,
++						struct ib_uverbs_reg_mr_resp),
++			UAPI_DEF_METHOD_NEEDS_FN(reg_user_mr_ex)),
+ 		DECLARE_UVERBS_WRITE(
+ 			IB_USER_VERBS_CMD_REREG_MR,
+ 			ib_uverbs_rereg_mr,
+diff --git a/include/rdma/ib_verbs.h b/include/rdma/ib_verbs.h
+index 62f9d126a71a..d57318c232c6 100644
+--- a/include/rdma/ib_verbs.h
++++ b/include/rdma/ib_verbs.h
+@@ -2486,6 +2486,9 @@ struct ib_device_ops {
+ 	struct ib_mr *(*reg_user_mr)(struct ib_pd *pd, u64 start, u64 length,
+ 				     u64 virt_addr, int mr_access_flags,
+ 				     struct ib_udata *udata);
++	struct ib_mr *(*reg_user_mr_ex)(struct ib_pd *pd, u64 start, u64 length,
++				     u64 virt_addr, int mr_access_flags,
++				     struct ib_udata *udata);
+ 	struct ib_mr *(*reg_user_mr_dmabuf)(struct ib_pd *pd, u64 offset,
+ 					    u64 length, u64 virt_addr, int fd,
+ 					    int mr_access_flags,
+diff --git a/include/uapi/rdma/ib_user_verbs.h b/include/uapi/rdma/ib_user_verbs.h
+old mode 100644
+new mode 100755
+index e16650f0c85d..09ddd4849bbe
+--- a/include/uapi/rdma/ib_user_verbs.h
++++ b/include/uapi/rdma/ib_user_verbs.h
+@@ -87,6 +87,7 @@ enum ib_uverbs_write_cmds {
+ 	IB_USER_VERBS_CMD_OPEN_XRCD,
+ 	IB_USER_VERBS_CMD_CLOSE_XRCD,
+ 	IB_USER_VERBS_CMD_CREATE_XSRQ,
++	IB_USER_VERBS_CMD_REG_MR_EX,
+ 	IB_USER_VERBS_CMD_OPEN_QP,
+ };
+ 

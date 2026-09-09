@@ -1,0 +1,14 @@
+obj-m += pl_allocator.o
+
+pl_allocator-objs := pl_allocater.o
+
+PWD := $(shell pwd)
+
+#ccflags-y += -Wall -g -O2
+
+default:
+	@echo "ARCH=$(ARCH) CROSS_COMPILE=$(GCC_PREFIX) make -C $(KERNEL_SRC) M=$(PWD) O=$(KERNEL_OUTPUT) modules"
+	ARCH=$(ARCH) CROSS_COMPILE=$(GCC_PREFIX) make -C $(KERNEL_SRC) M=$(PWD) O=$(KERNEL_OUTPUT) modules
+	ARCH=$(ARCH) CROSS_COMPILE=$(GCC_PREFIX) make INSTALL_MOD_STRIP=1  -C $(KERNEL_SRC) M=$(PWD) O=$(KERNEL_OUTPUT) modules_install
+clean:
+	make -C $(KERNEL_SRC) M=$(PWD) clean

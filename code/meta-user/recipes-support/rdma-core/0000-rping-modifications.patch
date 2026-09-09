@@ -1,0 +1,291 @@
+diff --git a/librdmacm/examples/rping.c b/librdmacm/examples/rping.c
+old mode 100644
+new mode 100755
+index cc16ad910..8649039d9
+--- a/librdmacm/examples/rping.c
++++ b/librdmacm/examples/rping.c
+@@ -49,6 +49,7 @@
+ static int debug = 0;
+ #define DEBUG_LOG if (debug) printf
+ 
++#define ERNIC_CQ_EVENT_SUPPORT 0
+ /*
+  * rping "ping/pong" loop:
+  * 	client sends source rkey/addr/len
+@@ -108,6 +109,7 @@ struct rping_rdma_info {
+  * Control block struct.
+  */
+ struct rping_cb {
++	int send_invalidate_test;
+ 	int server;			/* 0 iff client */
+ 	pthread_t cqthread;
+ 	pthread_t persistent_server_thread;
+@@ -286,66 +288,66 @@ static int rping_cq_event_handler(struct rping_cb *cb)
+ 	int ret;
+ 	int flushed = 0;
+ 
+-	while ((ret = ibv_poll_cq(cb->cq, 1, &wc)) == 1) {
+-		ret = 0;
+-
+-		if (wc.status) {
+-			if (wc.status == IBV_WC_WR_FLUSH_ERR) {
+-				flushed = 1;
+-				continue;
+-
+-			}
+-			fprintf(stderr,
+-				"cq completion failed status %d\n",
+-				wc.status);
+-			ret = -1;
+-			goto error;
+-		}
+-
+-		switch (wc.opcode) {
+-		case IBV_WC_SEND:
+-			DEBUG_LOG("send completion\n");
+-			break;
+-
+-		case IBV_WC_RDMA_WRITE:
+-			DEBUG_LOG("rdma write completion\n");
+-			cb->state = RDMA_WRITE_COMPLETE;
+-			sem_post(&cb->sem);
+-			break;
+-
+-		case IBV_WC_RDMA_READ:
+-			DEBUG_LOG("rdma read completion\n");
+-			cb->state = RDMA_READ_COMPLETE;
+-			sem_post(&cb->sem);
+-			break;
+-
+-		case IBV_WC_RECV:
+-			DEBUG_LOG("recv completion\n");
+-			ret = cb->server ? server_recv(cb, &wc) :
+-					   client_recv(cb, &wc);
+-			if (ret) {
+-				fprintf(stderr, "recv wc error: %d\n", ret);
++	while (1) {
++		if (cb->state == ERROR || cb->state == DISCONNECTED)
++			return -EFAULT;
++		if ((ret = ibv_poll_cq(cb->cq, 1, &wc)) == 1) {
++			ret = 0;
++
++			if (wc.status) {
++				if (wc.status == IBV_WC_WR_FLUSH_ERR) {
++					flushed = 1;
++					continue;
++
++				}
++				fprintf(stderr,
++					"cq completion failed status %d\n",
++					wc.status);
++				ret = -1;
+ 				goto error;
+ 			}
+-
+-			ret = ibv_post_recv(cb->qp, &cb->rq_wr, &bad_wr);
+-			if (ret) {
+-				fprintf(stderr, "post recv error: %d\n", ret);
++
++		switch (wc.opcode) {
++			case IBV_WC_SEND:
++				DEBUG_LOG("send completion\n");
++				break;
++
++			case IBV_WC_RDMA_WRITE:
++				DEBUG_LOG("rdma write completion\n");
++				cb->state = RDMA_WRITE_COMPLETE;
++				sem_post(&cb->sem);
++				break;
++
++			case IBV_WC_RDMA_READ:
++				DEBUG_LOG("rdma read completion\n");
++				cb->state = RDMA_READ_COMPLETE;
++				sem_post(&cb->sem);
++				break;
++
++			case IBV_WC_RECV:
++				DEBUG_LOG("recv completion\n");
++				ret = cb->server ? server_recv(cb, &wc) :
++						   client_recv(cb, &wc);
++				if (ret) {
++					fprintf(stderr, "recv wc error: %d\n", ret);
++					goto error;
++				}
++
++				ret = ibv_post_recv(cb->qp, &cb->rq_wr, &bad_wr);
++				if (ret) {
++					fprintf(stderr, "post recv error: %d\n", ret);
++					goto error;
++				}
++				sem_post(&cb->sem);
++				break;
++
++			default:
++				DEBUG_LOG("unknown!!!!! completion\n");
++				ret = -1;
+ 				goto error;
+ 			}
+-			sem_post(&cb->sem);
+-			break;
+-
+-		default:
+-			DEBUG_LOG("unknown!!!!! completion\n");
+-			ret = -1;
+-			goto error;
+ 		}
+ 	}
+-	if (ret) {
+-		fprintf(stderr, "poll error %d\n", ret);
+-		goto error;
+-	}
+ 	return flushed;
+ 
+ error:
+@@ -455,7 +457,11 @@ static void rping_setup_wr(struct rping_cb *cb)
+ 	cb->send_sgl.length = sizeof cb->send_buf;
+ 	cb->send_sgl.lkey = cb->send_mr->lkey;
+ 
+-	cb->sq_wr.opcode = IBV_WR_SEND;
++	if (cb->send_invalidate_test && (cb->server == 1)) {
++		cb->sq_wr.opcode = IBV_WR_SEND_WITH_INV;
++	} else {
++		cb->sq_wr.opcode = IBV_WR_SEND;
++	}
+ 	cb->sq_wr.send_flags = IBV_SEND_SIGNALED;
+ 	cb->sq_wr.sg_list = &cb->send_sgl;
+ 	cb->sq_wr.num_sge = 1;
+@@ -690,6 +696,7 @@ static void *cq_thread(void *arg)
+ 	DEBUG_LOG("cq_thread started.\n");
+ 
+ 	while (1) {	
++#if ERNIC_CQ_EVENT_SUPPORT
+ 		pthread_testcancel();
+ 
+ 		ret = ibv_get_cq_event(cb->channel, &ev_cq, &ev_ctx);
+@@ -706,11 +713,15 @@ static void *cq_thread(void *arg)
+ 			fprintf(stderr, "Failed to set notify!\n");
+ 			pthread_exit(NULL);
+ 		}
++#endif
+ 		ret = rping_cq_event_handler(cb);
++#if ERNIC_CQ_EVENT_SUPPORT
+ 		ibv_ack_cq_events(cb->cq, 1);
++#endif
+ 		if (ret)
+-			pthread_exit(NULL);
++			break;
+ 	}
++	return (void *)NULL;
+ }
+ 
+ static void rping_format_send(struct rping_cb *cb, char *buf, struct ibv_mr *mr)
+@@ -728,9 +739,9 @@ static void rping_format_send(struct rping_cb *cb, char *buf, struct ibv_mr *mr)
+ static int rping_test_server(struct rping_cb *cb)
+ {
+ 	struct ibv_send_wr *bad_wr;
+-	int ret;
++	int ret, wr_id = rand(), test = 1;
+ 
+-	while (1) {
++	while (test) {
+ 		/* Wait for client's Start STAG/TO/Len */
+ 		sem_wait(&cb->sem);
+ 		if (cb->state != RDMA_READ_ADV) {
+@@ -769,6 +780,8 @@ static int rping_test_server(struct rping_cb *cb)
+ 		if (cb->verbose)
+ 			printf("server ping data: %s\n", cb->rdma_buf);
+ 
++		if (cb->send_invalidate_test)
++			cb->sq_wr.invalidate_rkey = cb->remote_rkey;
+ 		/* Tell client to continue */
+ 		ret = ibv_post_send(cb->qp, &cb->sq_wr, &bad_wr);
+ 		if (ret) {
+@@ -791,7 +804,7 @@ static int rping_test_server(struct rping_cb *cb)
+ 		cb->rdma_sq_wr.opcode = IBV_WR_RDMA_WRITE;
+ 		cb->rdma_sq_wr.wr.rdma.rkey = cb->remote_rkey;
+ 		cb->rdma_sq_wr.wr.rdma.remote_addr = cb->remote_addr;
+-		cb->rdma_sq_wr.sg_list->length = strlen(cb->rdma_buf) + 1;
++		cb->rdma_sq_wr.sg_list->length = cb->remote_len;
+ 		DEBUG_LOG("rdma write from lkey %x laddr %" PRIx64 " len %d\n",
+ 			  cb->rdma_sq_wr.sg_list->lkey,
+ 			  cb->rdma_sq_wr.sg_list->addr,
+@@ -813,6 +826,10 @@ static int rping_test_server(struct rping_cb *cb)
+ 		}
+ 		DEBUG_LOG("server rdma write complete \n");
+ 
++		if (cb->send_invalidate_test) {
++			cb->sq_wr.invalidate_rkey = cb->remote_rkey;
++			test = 0;
++		}
+ 		/* Tell client to begin again */
+ 		ret = ibv_post_send(cb->qp, &cb->sq_wr, &bad_wr);
+ 		if (ret) {
+@@ -821,6 +838,8 @@ static int rping_test_server(struct rping_cb *cb)
+ 		}
+ 		DEBUG_LOG("server posted go ahead\n");
+ 	}
++	if (cb->state != ERROR)
++		cb->state = DISCONNECTED;
+ 
+ 	return (cb->state == DISCONNECTED) ? 0 : ret;
+ }
+@@ -905,7 +924,6 @@ static void *rping_persistent_server_thread(void *arg)
+ 
+ 	rping_test_server(cb);
+ 	rping_disconnect(cb, cb->child_cm_id);
+-	pthread_join(cb->cqthread, NULL);
+ 	rping_free_buffers(cb);
+ 	rping_free_qp(cb);
+ 	rdma_destroy_id(cb->child_cm_id);
+@@ -1024,7 +1042,6 @@ static int rping_run_server(struct rping_cb *cb)
+ 	ret = 0;
+ err3:
+ 	rping_disconnect(cb, cb->child_cm_id);
+-	pthread_join(cb->cqthread, NULL);
+ 	rdma_destroy_id(cb->child_cm_id);
+ err2:
+ 	rping_free_buffers(cb);
+@@ -1265,6 +1282,7 @@ static void usage(const char *name)
+ 	printf("\t-S size \tping data size\n");
+ 	printf("\t-C count\tping count times\n");
+ 	printf("\t-a addr\t\taddress\n");
++	printf("\t-i Send invalidate test\t\t\n");
+ 	printf("\t-p port\t\tport\n");
+ 	printf("\t-P\t\tpersistent server mode allowing multiple connections\n");
+ 	printf("\t-q\t\tuse self-created, self-modified QP\n");
+@@ -1287,10 +1305,11 @@ int main(int argc, char *argv[])
+ 	cb->size = 64;
+ 	cb->sin.ss_family = PF_INET;
+ 	cb->port = htobe16(7174);
++	cb->send_invalidate_test = 0;
+ 	sem_init(&cb->sem, 0, 0);
+ 
+ 	opterr = 0;
+-	while ((op = getopt(argc, argv, "a:I:Pp:C:S:t:scvVdq")) != -1) {
++	while ((op=getopt(argc, argv, "a:I:Pp:C:S:t:scvVdi")) != -1) {
+ 		switch (op) {
+ 		case 'a':
+ 			ret = get_addr(optarg, (struct sockaddr *) &cb->sin);
+@@ -1305,6 +1324,9 @@ int main(int argc, char *argv[])
+ 			cb->port = htobe16(atoi(optarg));
+ 			DEBUG_LOG("port %d\n", (int) atoi(optarg));
+ 			break;
++		case 'i':
++			cb->send_invalidate_test = 1;
++			break;
+ 		case 's':
+ 			cb->server = 1;
+ 			DEBUG_LOG("server\n");
+@@ -1362,6 +1384,12 @@ int main(int argc, char *argv[])
+ 		goto out;
+ 	}
+ 
++	if (cb->send_invalidate_test && (cb->server != 1)) {
++		printf("Send with invalidate can only be tested in server mode\n");
++		ret = EINVAL;
++		goto out;
++	}
++
+ 	cb->cm_channel = create_first_event_channel();
+ 	if (!cb->cm_channel) {
+ 		ret = errno;

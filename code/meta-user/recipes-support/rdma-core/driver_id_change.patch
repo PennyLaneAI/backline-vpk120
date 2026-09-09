@@ -1,0 +1,15 @@
+diff --git a/kernel-headers/rdma/ib_user_ioctl_verbs.h b/kernel-headers/rdma/ib_user_ioctl_verbs.h
+index 20e9d6fec..f10c71435 100644
+--- a/kernel-headers/rdma/ib_user_ioctl_verbs.h
++++ b/kernel-headers/rdma/ib_user_ioctl_verbs.h
+@@ -253,9 +253,9 @@ enum rdma_driver_id {
+ 	RDMA_DRIVER_QIB,
+ 	RDMA_DRIVER_EFA,
+ 	RDMA_DRIVER_SIW,
++	RDMA_DRIVER_XIB,
+ 	RDMA_DRIVER_ERDMA,
+ 	RDMA_DRIVER_MANA,
+-	RDMA_DRIVER_XIB,
+ };
+ 
+ enum ib_uverbs_gid_type {

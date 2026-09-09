@@ -1,0 +1,13 @@
+diff --git a/providers/xib/xib_u.c b/providers/xib/xib_u.c
+index 859cdf6de..f4ce6fc52 100644
+--- a/providers/xib/xib_u.c
++++ b/providers/xib/xib_u.c
+@@ -18,6 +18,8 @@ static const struct verbs_match_ent hca_table[] = {
+ 	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-3.0", NULL),
+ 	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-3.1C*", NULL),
+ 	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-3.1", NULL),
++	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-4.0C*", NULL),
++	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-4.0", NULL),
+ 	{}
+ };
+ 

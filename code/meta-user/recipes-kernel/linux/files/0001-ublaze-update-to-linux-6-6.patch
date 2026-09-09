@@ -1,0 +1,29 @@
+diff --git a/drivers/infiniband/core/uverbs_cmd.c b/drivers/infiniband/core/uverbs_cmd.c
+index 3b8f189b2f93..dbff779aa8f4 100755
+--- a/drivers/infiniband/core/uverbs_cmd.c
++++ b/drivers/infiniband/core/uverbs_cmd.c
+@@ -709,7 +709,7 @@ static int ib_uverbs_reg_mr_ex(struct uverbs_attr_bundle *attrs)
+ 	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK))
+ 		return -EINVAL;
+ 
+-	ret = ib_check_mr_access(cmd.access_flags);
++	ret = ib_check_mr_access(ib_dev, cmd.access_flags);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -723,15 +723,6 @@ static int ib_uverbs_reg_mr_ex(struct uverbs_attr_bundle *attrs)
+ 		goto err_free;
+ 	}
+ 
+-	if (cmd.access_flags & IB_ACCESS_ON_DEMAND) {
+-		if (!(pd->device->attrs.device_cap_flags &
+-		      IB_DEVICE_ON_DEMAND_PAGING)) {
+-			pr_debug("ODP support not available\n");
+-			ret = -EINVAL;
+-			goto err_put;
+-		}
+-	}
+-
+ 	mr = pd->device->ops.reg_user_mr_ex(pd, cmd.start, cmd.length, cmd.hca_va,
+ 					 cmd.access_flags,
+ 					 &attrs->driver_udata);

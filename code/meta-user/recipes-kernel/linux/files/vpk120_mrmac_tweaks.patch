@@ -1,0 +1,24 @@
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+index 4f659e730012..161bf4277cf4 100644
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+@@ -540,7 +540,7 @@ static inline int axienet_mrmac_100g_gt_reset(struct net_device *ndev)
+ 		/* Wait for PLL lock with timeout */
+ 		err = readl_poll_timeout(lp->gt_pll,
+ 					 val, (val & MRMAC_GT_LOCK_MASK),
+-					 10, DELAY_OF_ONE_MILLISEC);
++					 20, 2000000);//DELAY_OF_ONE_MILLISEC);;
+ 		if (err) {
+ 			netdev_err(ndev, "MRMAC PLL lock not complete! Cross-check the MAC ref clock configuration\n");
+ 			return -ENODEV;
+@@ -785,8 +785,8 @@ static int axienet_device_reset(struct net_device *ndev)
+ 		/* Reset MRMAC 100G*/
+ 		axienet_mrmac_100g_reset(lp);
+ 
+-		if (axienet_mrmac_100g_gt_reset(ndev))
+-			return 0 ;
++		if ((ret = axienet_mrmac_100g_gt_reset(ndev)))
++			return ret ;
+ 	}
+ 	for_each_rx_dma_queue(lp, i) {
+ 		q = lp->dq[i];

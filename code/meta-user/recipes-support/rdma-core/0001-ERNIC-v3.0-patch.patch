@@ -1,0 +1,435 @@
+diff --git a/kernel-headers/rdma/xib-abi.h b/kernel-headers/rdma/xib-abi.h
+index bdaabaa85..b7c910364 100755
+--- a/kernel-headers/rdma/xib-abi.h
++++ b/kernel-headers/rdma/xib-abi.h
+@@ -46,6 +46,7 @@ struct xib_ib_create_qp {
+ 	__aligned_u64 sq_ba;
+ 	__aligned_u64 rq_ba;
+ 	__aligned_u64 cq_ba;
++	__aligned_u64 imm_inv_ba;
+ };
+ 
+ struct xib_ib_alloc_pd_resp {
+diff --git a/libibverbs/cmd.c b/libibverbs/cmd.c
+index 4f0a3ae23..e4f46643c 100755
+--- a/libibverbs/cmd.c
++++ b/libibverbs/cmd.c
+@@ -612,7 +612,7 @@ int ibv_cmd_modify_qp(struct ibv_qp *qp, struct ibv_qp_attr *attr,
+ 	 * Starting with IBV_QP_RATE_LIMIT the attribute must go through the
+ 	 * _ex path.
+ 	 */
+-	if (attr_mask & ~(IBV_QP_RATE_LIMIT - 1))
++	if (attr_mask & ~(IBV_QP_ATTR_MASK - 1))
+ 		return EOPNOTSUPP;
+ 
+ 	copy_modify_qp_fields(qp, attr, attr_mask, &cmd->core_payload);
+diff --git a/libibverbs/verbs.h b/libibverbs/verbs.h
+index 589f1083a..c6fa0426f 100755
+--- a/libibverbs/verbs.h
++++ b/libibverbs/verbs.h
+@@ -1036,6 +1036,8 @@ enum ibv_qp_attr_mask {
+ 	_IBV_QP_ALT_VID 		= 1 << 24,
+ 	*/
+ 	IBV_QP_RATE_LIMIT		= 1 << 25,
++	IBV_ENABLE_QP_HW_ACCL		= 1 << 28,
++	IBV_QP_ATTR_MASK		= 1 << 29,
+ };
+ 
+ enum ibv_query_qp_data_in_order_flags {
+diff --git a/providers/xib/xib_u.c b/providers/xib/xib_u.c
+index 951760dc5..0adf0ca9c 100755
+--- a/providers/xib/xib_u.c
++++ b/providers/xib/xib_u.c
+@@ -14,6 +14,8 @@ static const struct verbs_match_ent hca_table[] = {
+ 	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-1.0", NULL),
+ 	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-2.0C*", NULL),
+ 	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-2.0", NULL),
++	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-3.0C*", NULL),
++	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-3.0", NULL),
+ 	{}
+ };
+ 
+diff --git a/providers/xib/xib_u.h b/providers/xib/xib_u.h
+index 18c55116c..cd0207fdc 100755
+--- a/providers/xib/xib_u.h
++++ b/providers/xib/xib_u.h
+@@ -105,19 +105,6 @@ struct xib_imm_inv {
+ 	bool		isvalid;
+ };
+ 
+-struct xib_qp {
+-	struct ibv_qp		ibv_qp;
+-	struct xib_rq		rq;
+-	struct xib_sq		sq;
+-	void			*ua_v;
+-	unsigned int		ua_size;
+-	unsigned int		rq_buf_size;
+-	unsigned int		qpn;
+-	int			port_num;
+-	uint64_t		cq_ba;
+-
+-};
+-
+ struct xib_cq {
+ 	struct ibv_cq		ibv_cq;
+ 	pthread_spinlock_t	lock;
+@@ -129,6 +116,21 @@ struct xib_cq {
+ 	unsigned int		imm_data_depth;
+ 	volatile struct xib_imm_inv	*imm_inv_data;
+ 	int			imm_data_chunk_id;
++	int			is_qp_valid;
++};
++
++struct xib_qp {
++	struct ibv_qp		ibv_qp;
++	struct xib_rq		rq;
++	struct xib_sq		sq;
++	void			*ua_v;
++	unsigned int		ua_size;
++	unsigned int		rq_buf_size;
++	unsigned int		qpn;
++	int			port_num;
++	uint64_t		cq_ba;
++	struct xib_cq		*recv_cq, *send_cq;
++
+ };
+ 
+ /* Work request 64Byte size */
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+index be53b954a..7fc0c2f42 100755
+--- a/providers/xib/xib_u_verbs.c
++++ b/providers/xib/xib_u_verbs.c
+@@ -277,6 +277,7 @@ struct ibv_cq *xib_u_create_cq(struct ibv_context *context, int cqe,
+ 
+ 	cq->ibv_cq.cqe = cqe;
+ 	cq->sq = cq->rq = NULL;
++	cq->is_qp_valid = false;
+ 	return &cq->ibv_cq;
+ err_db:
+ err:
+@@ -285,17 +286,25 @@ err:
+ 
+ }
+ 
++void trigger_vma_page_insertion(char *buf, uint64_t tot_size)
++{
++	unsigned int page_size = getpagesize();
++	uint64_t pg_cnt = (tot_size + page_size - 1) / page_size, i;
++
++	for (i = 0; i < pg_cnt; i++)
++		buf[i * page_size] = 0;
++}
++
+ struct ibv_qp *xib_u_create_qp(struct ibv_pd *ibvpd,
+ 				struct ibv_qp_init_attr *attr)
+ {
+-	int ret, chunk_id, mem_type;
++	int ret = 0;
+ 	struct xib_context *context = get_xib_ctx(ibvpd->context);
+ 	struct xib_qp *qp = NULL;
+ 	struct xib_cq *send_cq, *recv_cq;
+ 	struct xib_create_qp cmd = {};
+ 	struct xib_create_qp_resp resp = {};
+-	char *g;
+-	unsigned int cq_depth;
++	unsigned int cq_depth, size;
+ 	uint64_t va;
+ 	struct xib_umm_create_ctx_resp *info;
+ 
+@@ -308,80 +317,94 @@ struct ibv_qp *xib_u_create_qp(struct ibv_pd *ibvpd,
+ 	if (pthread_spin_init(&qp->sq.lock, PTHREAD_PROCESS_PRIVATE) ||
+ 	    pthread_spin_init(&qp->rq.lock, PTHREAD_PROCESS_PRIVATE)) {
+ 		fprintf(stderr, "pthread_spin_init failed!\n");
+-		goto err_free;
++		return NULL;
+ 	}
+ 
+ 	if (!attr->cap.max_send_wr) {
+ 		printf("SQ depth received is 0, setting it to default\n");
+ 		attr->cap.max_send_wr = XRNIC_DEF_SQ_DEPTH;
+ 	}
++
++	if (!attr->cap.max_recv_wr) {
++		printf("RQ depth received is 0, setting it to default\n");
++		attr->cap.max_recv_wr = XRNIC_DEF_RQ_DEPTH;
++	}
++
+ 	if (!(context && context->umem_ctx_resp)) {
+ 		pr_err("invalid umem context", -EINVAL);
+ 		return NULL;
+ 	}
++
+ 	info = context->umem_ctx_resp;
+ 	qp->sq.max_wr = attr->cap.max_send_wr;
+ 	qp->rq.max_wr = attr->cap.max_recv_wr;
+ 
+-	/* Allocate SQ */
++	/* 1. Allocate SQ */
++	size = (attr->cap.max_send_wr * XRNIC_SQ_WQE_SIZE);
+ 	va = xib_umem_alloc_mem(ibvpd->context, info->sq_chunk_id,
+-			(attr->cap.max_send_wr * XRNIC_SQ_WQE_SIZE));
+-	if (!va) {
++				size);
++	if (XMEM_IS_INVALID_VADDR(va)) {
+ 		pr_err("Failed to allocate SQ", -EFAULT);
+-		goto err_free;
++		goto sq_alloc_fail;
++	}
++
++	qp->sq.sq_ba_v = va;
++	trigger_vma_page_insertion((char *)va, size);
++
++	/* 2. Allocate imm data chunk. Needs processor access so the
++		param is true*/
++	recv_cq = get_xib_cq(attr->recv_cq);
++	size = attr->cap.max_recv_wr * sizeof(struct xib_imm_inv);
++	recv_cq->imm_data_chunk_id = xib_umem_alloc_chunk(ibvpd->context,
++						get_mem_type(info->rq_chunk_id),
++						size, size, true);
++	if (recv_cq->imm_data_chunk_id < 0) {
++		pr_err("Failed to allocate imm data chunk", -ENOMEM);
++		goto imm_alloc_fail;
+ 	}
+-	qp->sq.sq_ba_v	= va;
+ 
+-	{
+-		volatile char *buf = va;
+-		unsigned int page_size = getpagesize(), i = 0;
+-		/* trigger inserting pages */
+-		ret = ((attr->cap.max_send_wr * XRNIC_SQ_WQE_SIZE) + page_size - 1) / page_size;
+-		for (i = 0; i < ret; i++)
+-			buf[i * page_size] = 0;
++	va = xib_umem_alloc_mem(ibvpd->context, recv_cq->imm_data_chunk_id,
++			size);
++	if (XMEM_IS_INVALID_VADDR(va)) {
++		pr_err("Failed to allocate memory for imm data", -ENOMEM);
++		goto imm_alloc_fail;
+ 	}
+ 
+-	/* Allocate CQ */
++	trigger_vma_page_insertion((char *)va, size);
++
++	recv_cq->imm_inv_data = (uintptr_t)va;
++	recv_cq->imm_data_depth = attr->cap.max_recv_wr;
++	recv_cq->is_qp_valid = true;
++
++	/* 3. Allocate CQ */
++	size = (attr->cap.max_send_wr * CQE_SIZE);
+ 	va = xib_umem_alloc_mem(ibvpd->context, info->cq_chunk_id,
+-			(attr->cap.max_send_wr * CQE_SIZE));
+-	if (!va) {
++				size);
++	if (XMEM_IS_INVALID_VADDR(va)) {
+ 		pr_err("Failed to allocate CQ", -EFAULT);
+-		goto cq_fail;
++		goto cq_alloc_fail;
+ 	}
+ 
++	trigger_vma_page_insertion((char *)va, size);
++
+ 	send_cq = get_xib_cq(attr->send_cq);
+ 	send_cq->buf_v = va;
+ 	qp->cq_ba = va;
+ 
+-	{
+-		volatile char *buf = va;
+-		unsigned int page_size = getpagesize(), i = 0;
+-		/* trigger inserting pages */
+-		ret = ((attr->cap.max_send_wr * CQE_SIZE) + page_size - 1) / page_size;
+-		for (i = 0; i < ret; i++)
+-			buf[i * page_size] = 0;
+-	}
+-
+-	/* Allocate RQ */
++	/* 4. Allocate RQ */
++	size = (attr->cap.max_recv_wr * attr->cap.max_recv_sge *\
++			XRNIC_RQ_BUF_SGE_SIZE);
+ 	va = xib_umem_alloc_mem(ibvpd->context, info->rq_chunk_id,
+-			(attr->cap.max_recv_wr * attr->cap.max_recv_sge *
+-			XRNIC_RQ_BUF_SGE_SIZE));
+-	if (!va) {
++			size);
++	if (XMEM_IS_INVALID_VADDR(va)) {
+ 		pr_err("Failed to allocate RQ", -EFAULT);
+-		goto rq_fail;
++		goto rq_alloc_fail;
+ 	}
+-	qp->rq.rq_ba_v = va;
+ 
+-	{
+-		volatile  char *buf = va;
+-		unsigned int page_size = getpagesize(), i = 0;
+-		/* trigger inserting pages */
+-		ret = ((attr->cap.max_recv_wr * attr->cap.max_recv_sge * XRNIC_RQ_BUF_SGE_SIZE)
+-					+ page_size - 1) / page_size;
+-		for (i = 0; i < ret; i++)
+-			buf[i * page_size] = 0;
+-		ret = 0;
+-	}
++	trigger_vma_page_insertion((char *)va, size);
++
++	qp->rq_buf_size = attr->cap.max_recv_sge * XRNIC_RQ_BUF_SGE_SIZE;
++	qp->rq.rq_ba_v = va;
+ 
+ 	ret |= xib_umem_get_phy_addr(ibvpd->context, info->sq_chunk_id,
+ 				qp->sq.sq_ba_v, &cmd.sq_ba);
+@@ -391,30 +414,28 @@ struct ibv_qp *xib_u_create_qp(struct ibv_pd *ibvpd,
+ 
+ 	ret |= xib_umem_get_phy_addr(ibvpd->context, info->cq_chunk_id,
+ 				send_cq->buf_v, &cmd.cq_ba);
+-	if (ret) {
+-		printf("Failed to get phys address: %s:%d\n", __func__, __LINE__);
+-		goto qp_fail;
+-	}
+ 
+-	if (!attr->cap.max_recv_wr) {
+-		printf("RQ depth received is 0, setting it to default\n");
+-		attr->cap.max_recv_wr = XRNIC_DEF_RQ_DEPTH;
++	ret |= xib_umem_get_phy_addr(ibvpd->context, recv_cq->imm_data_chunk_id,
++				recv_cq->imm_inv_data, &cmd.imm_inv_ba);
++	if (ret) {
++		printf("Failed to get phys address: %s:%d\n",
++				__func__, __LINE__);
++		goto err_handler;
+ 	}
+ 
+ 	ret = ibv_cmd_create_qp(ibvpd, &qp->ibv_qp, attr, &cmd.ibv_cmd,
+ 				sizeof(cmd), &resp.ibv_resp, sizeof(resp));
+ 	if (ret) {
+ 		fprintf(stderr, "ibv_cmd_create_qp failed!\n");
+-		goto qp_fail;
++		goto err_handler;
+ 	}
+ 
+-
+ 	qp->qpn = resp.qpn;
+ 
+ 	send_cq->qpn = resp.qpn;
+ 	send_cq->sq = &qp->sq;
++	send_cq->is_qp_valid = true;
+ 
+-	recv_cq = get_xib_cq(attr->recv_cq);
+ 	recv_cq->qpn = resp.qpn;
+ 	recv_cq->rq = &qp->rq;
+ #if 1
+@@ -432,17 +453,17 @@ struct ibv_qp *xib_u_create_qp(struct ibv_pd *ibvpd,
+ 		/* create rq list */
+ 	qp->rq.rqe_list = calloc(1, qp->rq.max_wr * sizeof (*qp->rq.rqe_list));
+ 	if (!qp->rq.rqe_list) {
+-		pr_err("Failed to allocare rqe list", -ENOMEM);
+-		goto qp_fail;
++		pr_err("Failed to allocate RQE list", -ENOMEM);
++		goto err_handler;
+ 	}
+ 
+-	/* SQ */
++	/* Allocate array to store WR IDs*/
+ 	qp->sq.wr_id_array = calloc(qp->sq.max_wr, sizeof(*qp->sq.wr_id_array));
+ 	if (!qp->sq.wr_id_array) {
+ 		fprintf(stderr, "Failed to create memory for wr id array %s:%d\n",
+ 			__func__, __LINE__);
+ 		free(qp->rq.rqe_list);
+-		goto qp_fail;
++		goto err_handler;
+ 	}
+ 
+ 	qp->rq.prod = 0;
+@@ -452,51 +473,35 @@ struct ibv_qp *xib_u_create_qp(struct ibv_pd *ibvpd,
+ 	qp->sq.sq_cmpl_db_local = 0;
+ 	qp->sq.send_cq_db_local = 0;
+ 
+-	qp->rq_buf_size = attr->cap.max_recv_sge * XRNIC_RQ_BUF_SGE_SIZE;
+-	recv_cq->imm_data_chunk_id = xib_umem_alloc_mem_chunk_ex(ibvpd->context,
+-					get_mem_type(info->rq_chunk_id),
+-					attr->cap.max_recv_wr * sizeof(struct xib_imm_inv),
+-					attr->cap.max_recv_wr * sizeof(struct xib_imm_inv),
+-					attr->cap.max_recv_wr * sizeof(struct xib_imm_inv),
+-					&va);
+-
+-	if ((recv_cq->imm_data_chunk_id < 0) || (va <= 0)) {
+-		free(qp->rq.rqe_list);
+-		goto imm_fail;
+-	}
+-
+-	{
+-		volatile  char *buf = va;
+-		unsigned int page_size = getpagesize(), i = 0;
+-		/* trigger inserting pages */
+-		ret = ((attr->cap.max_recv_wr * sizeof(struct xib_imm_inv))
+-						+ page_size - 1) / page_size;
+-		for (i = 0; i < ret; i++)
+-			buf[i * page_size] = 0;
+-	}
+-	recv_cq->imm_inv_data = (uintptr_t)va;
+-	recv_cq->imm_data_depth = attr->cap.max_recv_wr;
++	qp->recv_cq = recv_cq;
++	qp->send_cq = send_cq;
+ 	return &qp->ibv_qp;
+-imm_fail:
+-	free(qp->sq.wr_id_array);
+-	/* deallocate chunk */
+-	if (!(recv_cq->imm_data_chunk_id < 0))
+-		ret = xib_umem_free_chunk(ibvpd->context, recv_cq->imm_data_chunk_id);
+ 
+-qp_fail:
++err_handler:
++	free(qp->sq.wr_id_array);
++	size = (qp->sq.max_wr * attr->cap.max_recv_sge *\
++			XRNIC_RQ_BUF_SGE_SIZE);
+ 	/* deallocte RQ */
+-	ret = xib_umem_free_mem(ibvpd->context, info->rq_chunk_id, qp->rq.rq_ba_v,
+-			(qp->sq.max_wr * attr->cap.max_recv_sge *
+-			XRNIC_RQ_BUF_SGE_SIZE));
+-rq_fail:
++	ret = xib_umem_free_mem(ibvpd->context, info->rq_chunk_id,
++			qp->rq.rq_ba_v, size);
++rq_alloc_fail:
+ 	/* deallocate CQ */
+ 	ret = xib_umem_free_mem(ibvpd->context, info->cq_chunk_id, qp->cq_ba,
+-			(qp->sq.max_wr * XRNIC_SQ_WQE_SIZE));
+-cq_fail:
+-	/* deallocate SQ */
+-	ret = xib_umem_free_mem(ibvpd->context, info->sq_chunk_id, qp->sq.sq_ba_v,
+ 			(qp->sq.max_wr * CQE_SIZE));
+-err_free:
++cq_alloc_fail:
++	/* deallocate SQ */
++	size = attr->cap.max_recv_wr * sizeof(struct xib_imm_inv);
++	ret = xib_umem_free_mem(ibvpd->context, recv_cq->imm_data_chunk_id,
++				recv_cq->imm_inv_data, size);
++imm_alloc_fail:
++	/* deallocate chunk */
++	if (!(recv_cq->imm_data_chunk_id < 0))
++		ret = xib_umem_free_chunk(ibvpd->context,
++				recv_cq->imm_data_chunk_id);
++	ret = xib_umem_free_mem(ibvpd->context, info->sq_chunk_id,
++				qp->sq.sq_ba_v,
++				(qp->sq.max_wr * XRNIC_SQ_WQE_SIZE));
++sq_alloc_fail:
+ 	free(qp);
+ 	return NULL;
+ }
+@@ -612,6 +617,11 @@ int xib_u_poll_cq(struct ibv_cq *ibvcq, int num_entries,
+ 	uint32_t cur_send_cq_head, err_flag, opcode;
+ 
+ 	pthread_spin_lock(&cq->lock);
++	if (!cq->is_qp_valid) {
++		pthread_spin_unlock(&cq->lock);
++		return 0;
++	}
++
+ 	if (rq) {
+ 		i = xib_u_pop_rq(context, rq, cq->qpn, num_entries);
+ 		if (i > 0) {
+@@ -928,6 +938,11 @@ int xib_u_destroy_qp(struct ibv_qp *ibqp)
+ 	struct xib_umm_create_ctx_resp *info;
+ 	struct xib_context *context = get_xib_ctx(ibqp->context);
+ 
++	if (qp->send_cq)
++		qp->send_cq->is_qp_valid = false;
++	if (qp->recv_cq)
++		qp->recv_cq->is_qp_valid = false;
++
+ 	ret = ibv_cmd_destroy_qp(ibqp);
+ 	if (ret < 0) {
+ 		fprintf(stderr, "%s failed to destroy\n", __func__);

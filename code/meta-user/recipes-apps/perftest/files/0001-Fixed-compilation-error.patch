@@ -1,0 +1,31 @@
+From c1b4613c8da15531f836d139b12d342462d23101 Mon Sep 17 00:00:00 2001
+From: priyadar <priyadarshini.babu@xilinx.com>
+Date: Tue, 8 Jun 2021 11:38:25 +0530
+Subject: [PATCH] Fixed compilation error.
+
+Declared duration_param in two files, so added static one file.
+
+Signed-off-by: priyadar <priyadarshini.babu@xilinx.com>
+---
+ src/raw_ethernet_resources.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+ mode change 100755 => 100644 src/raw_ethernet_resources.c
+
+diff --git a/src/raw_ethernet_resources.c b/src/raw_ethernet_resources.c
+old mode 100755
+new mode 100644
+index e87654d..038a0c8
+--- a/src/raw_ethernet_resources.c
++++ b/src/raw_ethernet_resources.c
+@@ -47,7 +47,7 @@
+ #include "perftest_communication.h"
+ #include "raw_ethernet_resources.h"
+ 
+-struct perftest_parameters* duration_param;
++static struct perftest_parameters* duration_param;
+ 
+ int check_flow_steering_support(char *dev_name)
+ {
+-- 
+1.8.3.1
+

@@ -1,0 +1,19 @@
+
+diff --git a/src/send_bw.c b/src/send_bw.c
+index 11e680d..ccf8186 100755
+--- a/src/send_bw.c
++++ b/src/send_bw.c
+@@ -549,11 +549,13 @@ int main(int argc, char *argv[])
+ 		fprintf(stderr," Trying to close this side resources\n");
+ 	}
+
++        usleep(3000);
+ 	/* Destory all test resources, including Mcast if exists */
+ 	if (send_destroy_ctx(&ctx,&user_param,&mcg_params)) {
+ 		fprintf(stderr,"Couldn't Destory all SEND resources\n");
+ 		return FAILURE;
+ 	}
++        usleep(3000);
+ 	if (user_param.work_rdma_cm == ON) {
+ 		user_comm.rdma_params->work_rdma_cm = ON;
+ 		if (destroy_ctx(user_comm.rdma_ctx,user_comm.rdma_params)) {

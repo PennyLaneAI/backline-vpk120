@@ -1,0 +1,27 @@
+diff --git a/providers/xib/xib_u.h b/providers/xib/xib_u.h
+index 8e807f53f..f96d17ca4 100755
+--- a/providers/xib/xib_u.h
++++ b/providers/xib/xib_u.h
+@@ -42,8 +42,8 @@ struct xib_context {
+ 	uint32_t			cq_ci_db_size, rq_pi_db_size;
+ 	void				*cq_ci_shpg, *rq_pi_shpg;
+ 
+-	unsigned int			db_pa;
+-	unsigned int			db_size;
++	unsigned long			db_pa;
++	unsigned long			db_size;
+ 
+ 	void				*ddr_db_addr;
+ 	uint64_t			ddr_db_pa;
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+index 1c50eb3b0..45fc501ca 100755
+--- a/providers/xib/xib_u_verbs.c
++++ b/providers/xib/xib_u_verbs.c
+@@ -657,6 +657,7 @@ int xib_u_poll_cq(struct ibv_cq *ibvcq, int num_entries,
+ 				cur_send_cq_head, sq->send_cq_db_local); */
+ 		/* send queue completions */
+ 		while (i < num_entries && sq->send_cq_db_local != cur_send_cq_head) {
++			memset(&wc[i], 0, sizeof(*wc));
+ 			if (sq->send_cq_db_local == sq->max_wr)
+ 				sq->send_cq_db_local = 0;
+ 			if (!sq->wr_id_array[sq->send_cq_db_local].signaled) {

@@ -1,0 +1,86 @@
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+index 36032c99bd20..3f43650cf883 100755
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+@@ -2209,8 +2209,9 @@ static int axienet_stop(struct net_device *ndev)
+ 		phylink_disconnect_phy(lp->phylink);
+ 	}
+ 
+-	lp->axienet_config->setoptions(ndev, lp->options &
+-			   ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
++	if (lp->axienet_config->mactype != XAXIENET_100G)
++            lp->axienet_config->setoptions(ndev, lp->options &
++                                           ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
+ 
+ 	for_each_tx_dma_queue(lp, i) {
+ 		q = lp->dq[i];
+@@ -3850,9 +3851,10 @@ static int axienet_probe(struct platform_device *pdev)
+ 				break;
+ 			}
+ 		} else {
++                        lp->phy_mode = PHY_INTERFACE_MODE_NA;
+ 			ret = of_get_phy_mode(pdev->dev.of_node, &lp->phy_mode);
+-			if (ret)
+-				goto cleanup_clk;
++			/* if (ret) */
++			/* 	goto cleanup_clk; */
+ 		}
+ 	}
+ 	if (lp->switch_x_sgmii && lp->phy_mode != PHY_INTERFACE_MODE_SGMII &&
+@@ -4071,7 +4073,8 @@ static int axienet_probe(struct platform_device *pdev)
+ 
+ 	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+ 	    lp->axienet_config->mactype != XAXIENET_1G_10G_25G &&
+-	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
++	    lp->axienet_config->mactype != XAXIENET_MRMAC &&
++            lp->axienet_config->mactype != XAXIENET_100G) {
+ 		np = of_parse_phandle(pdev->dev.of_node, "pcs-handle", 0);
+ 		if (!np) {
+ 			/* For SGMII/1000BaseX:
+@@ -4105,7 +4108,8 @@ static int axienet_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	if (lp->axienet_config->mactype != XAXIENET_1G_10G_25G &&
+-	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
++	    lp->axienet_config->mactype != XAXIENET_MRMAC &&
++            lp->axienet_config->mactype != XAXIENET_100G) {
+ 		lp->pcs.ops = &axienet_pcs_ops;
+ 		lp->pcs.neg_mode = true;
+ 		lp->pcs.poll = true;
+@@ -4137,25 +4141,28 @@ static int axienet_probe(struct platform_device *pdev)
+ 		}
+ 	}
+ 
+-	__set_bit(lp->phy_mode, lp->phylink_config.supported_interfaces);
+-	if (lp->switch_x_sgmii) {
++        if(lp->axienet_config->mactype != XAXIENET_100G)
++        {
++            __set_bit(lp->phy_mode, lp->phylink_config.supported_interfaces);
++            if (lp->switch_x_sgmii) {
+ 		__set_bit(PHY_INTERFACE_MODE_1000BASEX,
+ 			  lp->phylink_config.supported_interfaces);
+ 		__set_bit(PHY_INTERFACE_MODE_SGMII,
+ 			  lp->phylink_config.supported_interfaces);
+-	}
++            }
+ 
+-	if (lp->axienet_config->mactype != XAXIENET_1G_10G_25G &&
+-	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
++            if (lp->axienet_config->mactype != XAXIENET_1G_10G_25G &&
++                lp->axienet_config->mactype != XAXIENET_MRMAC) {
+ 		lp->phylink = phylink_create(&lp->phylink_config, pdev->dev.fwnode,
+ 					     lp->phy_mode,
+ 					     &axienet_phylink_ops);
+-	}
+-	if (IS_ERR(lp->phylink)) {
++            }
++            if (IS_ERR(lp->phylink)) {
+ 		ret = PTR_ERR(lp->phylink);
+ 		dev_err(&pdev->dev, "phylink_create error (%i)\n", ret);
+ 		goto cleanup_mdio;
+-	}
++            }
++        }
+ 
+ #ifdef CONFIG_AXIENET_HAS_MCDMA
+ 	/* Create sysfs file entries for the device */

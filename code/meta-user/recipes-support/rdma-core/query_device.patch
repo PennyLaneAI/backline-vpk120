@@ -1,0 +1,12 @@
+diff --git a/libibverbs/verbs.c b/libibverbs/verbs.c
+index 63f55bdcf..33434c123 100644
+--- a/libibverbs/verbs.c
++++ b/libibverbs/verbs.c
+@@ -165,6 +165,7 @@ LATEST_SYMVER_FUNC(ibv_query_device, 1_1, "IBVERBS_1.1",
+ 		   struct ibv_context *context,
+ 		   struct ibv_device_attr *device_attr)
+ {
++    printf("In latest symver ibv_query_device\n");
+ 	return get_ops(context)->query_device_ex(
+ 		context, NULL,
+ 		container_of(device_attr, struct ibv_device_attr_ex, orig_attr),

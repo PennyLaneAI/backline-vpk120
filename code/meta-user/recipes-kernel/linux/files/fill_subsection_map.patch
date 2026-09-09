@@ -1,0 +1,15 @@
+diff --git a/mm/sparse.c b/mm/sparse.c
+index 77d91e565045..3437d70a5782 100644
+--- a/mm/sparse.c
++++ b/mm/sparse.c
+@@ -691,8 +691,8 @@ static int fill_subsection_map(unsigned long pfn, unsigned long nr_pages)
+ 
+ 	if (bitmap_empty(map, SUBSECTIONS_PER_SECTION))
+ 		rc = -EINVAL;
+-	else if (bitmap_intersects(map, subsection_map, SUBSECTIONS_PER_SECTION))
+-		rc = -EEXIST;
++	/* else if (bitmap_intersects(map, subsection_map, SUBSECTIONS_PER_SECTION)) */
++	/* 	rc = -EEXIST;  hm this is preventing devm_memremap_pages from working*/
+ 	else
+ 		bitmap_or(subsection_map, map, subsection_map,
+ 				SUBSECTIONS_PER_SECTION);

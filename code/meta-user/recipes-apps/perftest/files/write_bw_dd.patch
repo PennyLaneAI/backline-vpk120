@@ -1,0 +1,12 @@
+diff --git a/src/write_bw.c b/src/write_bw.c
+index 1235c50..ecacd83 100755
+--- a/src/write_bw.c
++++ b/src/write_bw.c
+@@ -235,6 +235,7 @@ int main(int argc, char *argv[])
+ 			fprintf(stderr,"Failed to close connection between server and client\n");
+ 			return 1;
+ 		}
++                usleep(3000);
+ 
+ 		if (user_param.output == FULL_VERBOSITY) {
+ 			if (user_param.report_per_port)

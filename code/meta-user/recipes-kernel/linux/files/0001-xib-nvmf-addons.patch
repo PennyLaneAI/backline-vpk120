@@ -1,0 +1,36 @@
+diff --git a/include/rdma/ib_verbs.h b/include/rdma/ib_verbs.h
+index 62f9d126a71a..1b133f99a333 100644
+--- a/include/rdma/ib_verbs.h
++++ b/include/rdma/ib_verbs.h
+@@ -43,6 +43,8 @@
+ #include <uapi/rdma/rdma_user_ioctl.h>
+ #include <uapi/rdma/ib_user_ioctl_verbs.h>
+ 
++#define IB_CHANGES_XIB_NVMF
++
+ #define IB_FW_VERSION_NAME_MAX	ETHTOOL_FWVERS_LEN
+ 
+ struct ib_umem_odp;
+@@ -1258,6 +1260,10 @@ enum ib_qp_attr_mask {
+ 	IB_QP_RESERVED3			= (1<<23),
+ 	IB_QP_RESERVED4			= (1<<24),
+ 	IB_QP_RATE_LIMIT		= (1<<25),
++#ifdef IB_CHANGES_XIB_NVMF
++	IB_QP_RST_RQ                    = (1<<26),
++	IB_QP_RST_SQ_CQ                 = (1<<27),
++#endif
+ 
+ 	IB_QP_ATTR_STANDARD_BITS = GENMASK(20, 0),
+ };
+@@ -1311,6 +1317,11 @@ struct ib_qp_attr {
+ 	u8			alt_timeout;
+ 	u32			rate_limit;
+ 	struct net_device	*xmit_slave;
++#ifdef IB_CHANGES_XIB_NVMF
++	int                     nvmf_rhost;
++	dma_addr_t              rq_ba_p;
++	dma_addr_t              sq_ba_p;
++#endif
+ };
+ 
+ enum ib_wr_opcode {

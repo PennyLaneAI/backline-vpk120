@@ -1,0 +1,17 @@
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+index 955b587d6..031a285dd 100644
+--- a/providers/xib/xib_u_verbs.c
++++ b/providers/xib/xib_u_verbs.c
+@@ -28,9 +28,9 @@
+ #define ERNIC_V4
+ 
+ #ifdef ERNIC_V4
+-#define XRNIC_RQ_CONS_IDX(q)		(0x134 + (q) * 0x100)
+-#define XRNIC_CQ_HEAD_PTR(q)		(0x130 + (q) * 0x100)
+-#define XRNIC_SQ_PROD_IDX(q)		(0x138 + (q) * 0x100)
++#define XRNIC_RQ_CONS_IDX(q)		(0x34 + (q) * 0x100)
++#define XRNIC_CQ_HEAD_PTR(q)		(0x30 + (q) * 0x100)
++#define XRNIC_SQ_PROD_IDX(q)		(0x38 + (q) * 0x100)
+ #else
+ #define XRNIC_RQ_CONS_IDX(q)		(0x234 + (q) * 0x100)
+ #define XRNIC_CQ_HEAD_PTR(q)		(0x230 + (q) * 0x100)

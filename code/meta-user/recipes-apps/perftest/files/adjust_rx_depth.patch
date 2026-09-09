@@ -1,0 +1,18 @@
+diff --git a/src/send_bw.c b/src/send_bw.c
+index 03dafc1..4cf2f7c 100755
+--- a/src/send_bw.c
++++ b/src/send_bw.c
+@@ -256,7 +256,12 @@ int main(int argc, char *argv[])
+ 	/* Allocating arrays needed for the test. */
+ 	alloc_ctx(&ctx,&user_param);
+
+-        user_param.rx_depth = 4;
++        //printf("size %x\n", user_param.size);
++        /* Adjust rx_depth for large messages */
++        user_param.rx_depth = (user_param.rx_depth * 0x1000) / user_param.size;
++        if(user_param.rx_depth < 4)
++             user_param.rx_depth = 4;
++        //printf("adjusted rx_depth %d\n", user_param.rx_depth);
+
+ 	/* Create (if nessacery) the rdma_cm ids and channel. */
+ 	if (user_param.work_rdma_cm == ON) {

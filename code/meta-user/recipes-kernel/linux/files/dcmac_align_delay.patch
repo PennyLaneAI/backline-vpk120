@@ -1,0 +1,13 @@
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+index 85b5731f9d56..1996d9408efc 100644
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+@@ -973,7 +973,7 @@ static int axienet_device_reset(struct net_device *ndev)
+ 					 (val > 0) &&
+ 					 (val & DCMAC_RXPHY_RX_STS_MASK) &&
+ 					 (val & DCMAC_RXPHY_RX_ALIGN_MASK),
+-					 10, 100 * DELAY_OF_ONE_MILLISEC);
++					 10, 1000 * DELAY_OF_ONE_MILLISEC);
+ 
+ 		if (ret) {
+ 			netdev_err(ndev, "Alignment not achieved. Failed to reset DCMAC\n");

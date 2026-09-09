@@ -1,0 +1,1566 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+old mode 100644
+new mode 100755
+index f326183fc..94e1c60c4
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -749,6 +749,7 @@ add_subdirectory(providers/mthca)
+ add_subdirectory(providers/ocrdma)
+ add_subdirectory(providers/qedr)
+ add_subdirectory(providers/vmw_pvrdma)
++add_subdirectory(providers/xib)
+ endif()
+ 
+ add_subdirectory(providers/hfi1verbs)
+diff --git a/buildlib/rdma_functions.cmake b/buildlib/rdma_functions.cmake
+old mode 100644
+new mode 100755
+index ef77d95d0..31867b2e8
+--- a/buildlib/rdma_functions.cmake
++++ b/buildlib/rdma_functions.cmake
+@@ -197,6 +197,7 @@ function(rdma_provider DEST)
+   target_link_libraries(${DEST} LINK_PRIVATE ${COMMON_LIBS_PIC})
+   target_link_libraries(${DEST} LINK_PRIVATE ibverbs)
+   target_link_libraries(${DEST} LINK_PRIVATE ${CMAKE_THREAD_LIBS_INIT})
++  target_link_libraries(${DEST} LINK_PRIVATE libumm.so)
+   set_target_properties(${DEST} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${BUILD_LIB}")
+   # Provider Plugins do not use SONAME versioning, there is no reason to
+   # create the usual symlinks.
+diff --git a/infiniband-diags/scripts/CMakeLists.txt b/infiniband-diags/scripts/CMakeLists.txt
+old mode 100644
+new mode 100755
+index 377a38845..9ef1aa47f
+--- a/infiniband-diags/scripts/CMakeLists.txt
++++ b/infiniband-diags/scripts/CMakeLists.txt
+@@ -81,8 +81,8 @@ rdma_sbin_perl_program(
+   ibidsverify.pl
+   )
+ 
+-install(FILES "IBswcountlimits.pm"
+-  DESTINATION "${CMAKE_INSTALL_PERLDIR}")
++#install(FILES "IBswcountlimits.pm"
++ # DESTINATION "${CMAKE_INSTALL_PERLDIR}")
+ 
+ if (ENABLE_IBDIAGS_COMPAT)
+   rdma_sbin_shell_program(
+diff --git a/kernel-headers/CMakeLists.txt b/kernel-headers/CMakeLists.txt
+old mode 100644
+new mode 100755
+index 82c191cad..ed0e3afe2
+--- a/kernel-headers/CMakeLists.txt
++++ b/kernel-headers/CMakeLists.txt
+@@ -26,6 +26,7 @@ publish_internal_headers(rdma
+   rdma/rvt-abi.h
+   rdma/siw-abi.h
+   rdma/vmw_pvrdma-abi.h
++  rdma/xib-abi.h
+   )
+ 
+ publish_internal_headers(rdma/hfi
+@@ -80,6 +81,7 @@ rdma_kernel_provider_abi(
+   rdma/rdma_user_rxe.h
+   rdma/siw-abi.h
+   rdma/vmw_pvrdma-abi.h
++  rdma/xib-abi.h
+   )
+ 
+ publish_headers(infiniband
+diff --git a/kernel-headers/rdma/ib_user_ioctl_verbs.h b/kernel-headers/rdma/ib_user_ioctl_verbs.h
+old mode 100644
+new mode 100755
+index fe15bc7e9..20e9d6fec
+--- a/kernel-headers/rdma/ib_user_ioctl_verbs.h
++++ b/kernel-headers/rdma/ib_user_ioctl_verbs.h
+@@ -255,6 +255,7 @@ enum rdma_driver_id {
+ 	RDMA_DRIVER_SIW,
+ 	RDMA_DRIVER_ERDMA,
+ 	RDMA_DRIVER_MANA,
++	RDMA_DRIVER_XIB,
+ };
+ 
+ enum ib_uverbs_gid_type {
+diff --git a/kernel-headers/rdma/xib-abi.h b/kernel-headers/rdma/xib-abi.h
+new file mode 100755
+index 000000000..bdaabaa85
+--- /dev/null
++++ b/kernel-headers/rdma/xib-abi.h
+@@ -0,0 +1,74 @@
++/* SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-2-Clause) */
++/*
++ * Copyright (c) 2018 Xilinx Inc.
++ *
++ * This software is available to you under a choice of one of two
++ * licenses.  You may choose to be licensed under the terms of the GNU
++ * General Public License (GPL) Version 2, available from the file
++ * COPYING in the main directory of this source tree, or the
++ * OpenIB.org BSD license below:
++ *
++ *     Redistribution and use in source and binary forms, with or
++ *     without modification, are permitted provided that the following
++ *     conditions are met:
++ *
++ *      - Redistributions of source code must retain the above
++ *        copyright notice, this list of conditions and the following
++ *        disclaimer.
++ *
++ *      - Redistributions in binary form must reproduce the above
++ *        copyright notice, this list of conditions and the following
++ *        disclaimer in the documentation and/or other materials
++ *        provided with the distribution.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
++ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
++ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
++ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
++ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ */
++
++#ifndef XIB_ABI_USER_H
++#define XIB_ABI_USER_H
++
++#include <linux/types.h>
++
++struct xib_ib_create_cq {
++	__aligned_u64 buf_addr;
++	__aligned_u64 db_addr;
++};
++
++struct xib_ib_create_qp {
++	__aligned_u64 db_addr;
++	__aligned_u64 sq_ba;
++	__aligned_u64 rq_ba;
++	__aligned_u64 cq_ba;
++};
++
++struct xib_ib_alloc_pd_resp {
++	__u32 pdn;
++};
++
++struct xib_ib_create_cq_resp {
++	__aligned_u64 cqn;
++	__aligned_u64 cap_flags;
++};
++
++struct xib_ib_create_qp_resp {
++	__u32 qpn;
++	__u32 cap_flags;
++};
++
++struct xib_ib_alloc_ucontext_resp {
++	__aligned_u64 db_pa;
++	__u32 db_size;
++	__aligned_u64 cq_ci_db_pa;
++	__aligned_u64 rq_pi_db_pa;
++	uint32_t cq_ci_db_size, rq_pi_db_size;
++	__u32 qp_tab_size;
++};
++
++#endif /* XIB_ABI_USER_H  */
+diff --git a/providers/xib/CMakeLists.txt b/providers/xib/CMakeLists.txt
+new file mode 100755
+index 000000000..27f5d0df0
+--- /dev/null
++++ b/providers/xib/CMakeLists.txt
+@@ -0,0 +1,4 @@
++rdma_provider(xib
++  xib_u.c
++  xib_u_verbs.c
++)
+diff --git a/providers/xib/xib.driver b/providers/xib/xib.driver
+new file mode 100755
+index 000000000..e7467d845
+--- /dev/null
++++ b/providers/xib/xib.driver
+@@ -0,0 +1 @@
++driver xib
+diff --git a/providers/xib/xib_u.c b/providers/xib/xib_u.c
+new file mode 100755
+index 000000000..032c441e3
+--- /dev/null
++++ b/providers/xib/xib_u.c
+@@ -0,0 +1,189 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <pthread.h>
++#include <sys/mman.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <umm_export.h>
++#include "xib_u.h"
++#include "xib_u_abi.h"
++
++static const struct verbs_match_ent hca_table[] = {
++	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-1.0C*", NULL),
++	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-1.0", NULL),
++	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-2.0C*", NULL),
++	VERBS_MODALIAS_MATCH("of:N*T*Cxlnx,ernic-2.0", NULL),
++	{}
++};
++
++static int xib_map_doorbells(struct xib_context *context, int page_size, int cmd_fd)
++{
++	context->db_addr = mmap(NULL, context->db_size, PROT_READ | PROT_WRITE, MAP_SHARED,
++				cmd_fd, context->db_pa);
++	if (context->db_addr == MAP_FAILED) {
++		context->db_addr = NULL;
++		fprintf(stderr, "%s:%d mmap failed\n", __func__, __LINE__);
++		return -ENOMEM;
++	}
++
++
++	context->cq_ci_shpg = mmap(NULL, context->cq_ci_db_size, PROT_READ | PROT_WRITE | PROT_EXEC,
++					MAP_SHARED, cmd_fd, context->cq_ci_db_pa);
++	if (context->cq_ci_shpg == MAP_FAILED) {
++		context->cq_ci_shpg = NULL;
++		fprintf(stderr, "%s:%d mmap failed\n", __func__, __LINE__);
++		return -ENOMEM;
++	}
++
++	context->rq_pi_shpg = mmap(NULL, context->rq_pi_db_size, PROT_READ | PROT_WRITE | PROT_EXEC,
++					MAP_SHARED, cmd_fd, context->rq_pi_db_pa);
++	if (context->rq_pi_shpg == MAP_FAILED) {
++		context->rq_pi_shpg = NULL;
++		fprintf(stderr, "%s:%d mmap failed\n", __func__, __LINE__);
++		return -ENOMEM;
++	}
++	return 0;
++failed:
++	return -ENOMEM;
++}
++
++static void xib_free_context(struct ibv_context *ibctx)
++{
++	struct xib_context *context = get_xib_ctx(ibctx);
++	struct xib_device *dev = get_xib_dev(ibctx->device);
++
++	if (context->cq_ci_shpg)
++		munmap(context->cq_ci_shpg, dev->page_size);
++	if (context->rq_pi_shpg)
++		munmap(context->rq_pi_shpg, dev->page_size);
++
++	if (context->db_addr)
++		munmap(context->db_addr, context->db_size);
++
++	verbs_uninit_context(&context->ibv_ctx);
++	free(context);
++}
++
++static const struct verbs_context_ops xib_ctx_common_ops = {
++	.query_device		= xib_u_query_device,
++	.query_port		= xib_u_query_port,
++	.alloc_pd		= xib_u_alloc_pd,
++	.dealloc_pd		= xib_u_free_pd,
++	.reg_mr			= xib_u_reg_mr,
++	.rereg_mr		= xib_u_rereg_mr,
++	.dereg_mr		= xib_u_dereg_mr,
++
++	.create_cq		= xib_u_create_cq,
++	.poll_cq		= xib_u_poll_cq,
++	.req_notify_cq	= xib_u_arm_cq,
++	.cq_event		= xib_u_cq_event,
++	.destroy_cq		= xib_u_destroy_cq,
++
++	.create_qp		= xib_u_create_qp,
++	.query_qp		= xib_u_query_qp,
++	.modify_qp		= xib_u_modify_qp,
++	.destroy_qp		= xib_u_destroy_qp,
++	.post_send		= xib_u_post_send,
++	.post_recv		= xib_u_post_recv,
++	.free_context		= xib_free_context,
++};
++
++static struct verbs_context *xib_alloc_context(struct ibv_device *ibdev,
++						int cmd_fd)
++{
++	struct xib_context *context;
++	struct ibv_get_context cmd;
++	struct xib_alloc_ucontext_resp resp;
++	struct xib_device *dev = get_xib_dev(ibdev);
++	struct xib_umem_ctx_info umm_ctx_info;
++	struct ibv_device_attr dev_attr;
++	int ret;
++	struct verbs_context *verbs_ctx;
++
++	context = verbs_init_and_alloc_context(ibdev, cmd_fd, context, ibv_ctx,
++						RDMA_DRIVER_XIB);
++	if(!context)
++		return NULL;
++	verbs_ctx = &context->ibv_ctx;
++
++	memset(&resp, 0, sizeof(resp));
++	if (ibv_cmd_get_context(&context->ibv_ctx, &cmd, sizeof(cmd),
++				&resp.ibv_resp, sizeof(resp)))
++		goto failed;
++
++
++	context->db_pa = resp.db_pa;
++	context->db_size = resp.db_size;
++	context->cq_ci_db_pa = resp.cq_ci_db_pa;
++	context->rq_pi_db_pa = resp.rq_pi_db_pa;
++
++	context->cq_ci_db_size = resp.cq_ci_db_size;
++	context->rq_pi_db_size = resp.rq_pi_db_size;
++
++	context->cmd_fd  = cmd_fd;
++
++	if (xib_map_doorbells(context, dev->page_size, cmd_fd) < 0)
++		fprintf(stderr, "Failed to mmap doorbells\n");
++	verbs_set_ops(verbs_ctx, &xib_ctx_common_ops);
++	ret = ibv_query_device(&verbs_ctx->context, &dev_attr);
++	if (ret) {
++		printf("Failed to query device attributes\n");
++		goto failed;
++	}
++
++	/* TODO; Copy required data to umem ctx parameters */
++	/* Call umm context create */
++	umm_ctx_info.mmap_fd = cmd_fd;
++	umm_ctx_info.max_qp = dev_attr.max_qp;
++	umm_ctx_info.max_cq = dev_attr.max_cq;
++	umm_ctx_info.max_qp_per_app = dev_attr.max_qp;
++	umm_ctx_info.rq_depth = dev_attr.max_qp_wr;
++	umm_ctx_info.sq_depth = dev_attr.max_qp_wr;
++	umm_ctx_info.rq_buffer_size = dev_attr.max_sge * XLNX_RQ_SGE_SIZE;
++	context->umem_ctx_resp = xib_umem_create_context(&context->ibv_ctx, &umm_ctx_info);
++	if (!context->umem_ctx_resp) {
++		printf("umem create context failed\n");
++		goto failed;
++	}
++
++	return &context->ibv_ctx;
++
++failed:
++	verbs_uninit_context(&context->ibv_ctx);
++	free(context);
++	return NULL;
++}
++
++
++static void xib_uninit_device(struct verbs_device *verbs_device)
++{
++	struct xib_device *dev = get_xib_dev(&verbs_device->device);
++
++	free(dev);
++}
++
++static struct verbs_device *xib_device_alloc(struct verbs_sysfs_dev *sysfs_dev)
++{
++	struct xib_device *dev;
++
++	dev = calloc(1, sizeof(struct xib_device));
++	if (!dev)
++		return NULL;
++
++	dev->page_size = sysconf(_SC_PAGESIZE);
++	return &dev->ibv_dev;
++}
++
++static const struct verbs_device_ops xib_dev_ops = {
++	.name = "xib",
++	.match_min_abi_version = 0,
++	.match_max_abi_version = INT_MAX,
++	.match_table	= hca_table,
++	.alloc_device	= xib_device_alloc,
++	.uninit_device	= xib_uninit_device,
++	.alloc_context	= xib_alloc_context,
++};
++
++
++PROVIDER_DRIVER(xib,xib_dev_ops);
+diff --git a/providers/xib/xib_u.h b/providers/xib/xib_u.h
+new file mode 100755
+index 000000000..0681a7deb
+--- /dev/null
++++ b/providers/xib/xib_u.h
+@@ -0,0 +1,212 @@
++#ifndef _XIB_U_H
++#define _XIB_U_H
++
++#include <stddef.h>
++#include <endian.h>
++#include <util/compiler.h>
++
++#include <infiniband/driver.h>
++#include <util/udma_barrier.h>
++#include <infiniband/verbs.h>
++#include <ccan/bitmap.h>
++#include <ccan/container_of.h>
++
++enum xrnic_wc_opcod {
++	XRNIC_RDMA_WRITE = 0x0,
++	XRNIC_RDMA_WRITE_WITH_IMM = 1,
++	XRNIC_SEND_ONLY= 0x2,
++	XRNIC_SEND_WITH_IMM = 0x3,
++	XRNIC_RDMA_READ = 0x4,
++	XRNIC_RSRVD_0 = 5,
++	XRNIC_RSRVD_1 = 6,
++	XRNIC_RSRVD_2 = 7,
++	XRNIC_RSRVD_3 = 8,
++	XRNIC_RSRVD_4 = 9,
++	XRNIC_RSRVD_5 = 10,
++	XRNIC_RSRVD_6 = 11,
++	XRNIC_SEND_WITH_INV = 0xC,
++};
++#define XRNIC_MAX_SGE_CNT	(1)
++struct xib_context {
++	struct verbs_context		ibv_ctx;
++	void				*shpg;
++	int				cmd_fd;
++
++	int				num_qps;
++	unsigned int			max_sge;
++	int				max_cqe;
++
++	void				*db_addr;
++	uint64_t			cq_ci_db_pa;
++	uint64_t			rq_pi_db_pa;
++	uint32_t			cq_ci_db_size, rq_pi_db_size;
++	void				*cq_ci_shpg, *rq_pi_shpg;
++
++	unsigned int			db_pa;
++	unsigned int			db_size;
++
++	void				*ddr_db_addr;
++	uint64_t			ddr_db_pa;
++	unsigned int			ddr_db_size;
++	void				*umem_ctx_resp;
++};
++
++struct xib_device {
++	struct verbs_device	ibv_dev;
++	int			page_size;
++};
++
++struct xib_pd {
++	struct ibv_pd		ibv_pd;
++	unsigned int		pdn;
++};
++
++#define XIB_MAX_RQE_SGE		16
++struct xib_rqe {
++	uint64_t wr_id;
++	struct ibv_sge 		*sg_list[XIB_MAX_RQE_SGE];
++};
++
++struct xib_rq {
++	pthread_spinlock_t	lock;
++	uint32_t		*rq_db_addr;
++	uint32_t		rq_wrptr_db_local;
++	uint32_t		prod;
++	uint32_t		cons;
++	uint32_t		gsi_cons;
++	volatile void		*rq_ba_v;
++	uint32_t		max_wr;
++
++	/* store rqe from stack */
++	struct xib_rqe		*rqe_list;
++};
++
++struct xib_sq {
++	pthread_spinlock_t	lock;
++	uint32_t		sq_cmpl_db_local;
++	uint32_t		send_cq_db_local;
++	struct {
++		uint64_t	wr_id;
++		bool		signaled;
++	} *wr_id_array;
++	volatile void			*sq_ba_v;
++	volatile void			*send_sgl_v;
++	uint64_t		send_sgl_p;
++	uint32_t		max_wr;
++};
++
++#define SEND_INVALIDATE         0x1
++#define SEND_IMMEDIATE          0x2
++#define WRITE_IMMEDIATE         0x3
++
++struct xib_imm_inv {
++	uint32_t	data;
++	uint8_t		type;
++	bool		isvalid;
++};
++
++struct xib_qp {
++	struct ibv_qp		ibv_qp;
++	struct xib_rq		rq;
++	struct xib_sq		sq;
++	void			*ua_v;
++	unsigned int		ua_size;
++	unsigned int		rq_buf_size;
++	unsigned int		qpn;
++	int			port_num;
++	uint64_t		cq_ba;
++
++};
++
++struct xib_cq {
++	struct ibv_cq		ibv_cq;
++	pthread_spinlock_t	lock;
++	int			qpn;
++	void			*buf_v;
++	struct xib_rq		*rq;
++	struct xib_sq		*sq;
++	unsigned long		flags;
++	unsigned int		imm_data_depth;
++	volatile struct xib_imm_inv	*imm_inv_data;
++	int			imm_data_chunk_id;
++};
++
++/* Work request 64Byte size */
++#define XRNIC_WR_ID_MASK	0xffff
++#define XRNIC_OPCODE_MASK	0xff
++struct xrnic_wr
++{
++	uint32_t	wrid;
++	uint64_t	l_addr;
++	uint32_t	length;
++	uint32_t	opcode;
++	uint64_t	r_offset;
++	uint32_t	r_tag;
++#define XRNIC_MAX_SDATA		16
++	uint8_t		sdata[XRNIC_MAX_SDATA];
++	uint32_t        imm_data;
++	uint8_t         resvd[12];
++}__attribute__((__packed__));
++
++struct xrnic_cqe
++{
++	uint32_t entry;
++};
++
++static inline struct xib_device *get_xib_dev(struct ibv_device *ibv_dev)
++{
++	return container_of(ibv_dev, struct xib_device, ibv_dev.device);
++}
++
++static inline struct xib_context *get_xib_ctx(struct ibv_context *ibv_ctx)
++{
++	return container_of(ibv_ctx, struct xib_context, ibv_ctx.context);
++}
++
++static inline struct xib_pd *get_xib_pd(struct ibv_pd *ibv_pd)
++{
++	return container_of(ibv_pd, struct xib_pd, ibv_pd);
++}
++
++static inline struct xib_qp *get_xib_qp(struct ibv_qp *ibv_qp)
++{
++	return container_of(ibv_qp, struct xib_qp, ibv_qp);
++}
++
++static inline struct xib_cq *get_xib_cq(struct ibv_cq *ibv_cq)
++{
++	return container_of(ibv_cq, struct xib_cq, ibv_cq);
++}
++
++int xib_u_query_device(struct ibv_context *context,
++			struct ibv_device_attr *attr);
++int xib_u_query_port(struct ibv_context *context, uint8_t port,
++			struct ibv_port_attr *attr);
++struct ibv_pd *xib_u_alloc_pd(struct ibv_context *context);
++int xib_u_free_pd(struct ibv_pd *pd);
++struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
++				int access);
++int xib_u_rereg_mr(struct ibv_mr *mr, int flags, struct ibv_pd *pd,
++			void *addr, size_t length, int access);
++int xib_u_dereg_mr(struct ibv_mr *mr);
++struct ibv_cq *xib_u_create_cq(struct ibv_context *context, int cqe,
++				    struct ibv_comp_channel *channel,
++				    int comp_vector);
++struct ibv_qp *xib_u_create_qp(struct ibv_pd *pd,
++				struct ibv_qp_init_attr *attr);
++
++int xib_u_poll_cq(struct ibv_cq *ibvcq, int ne,
++				 struct ibv_wc *wc);
++int xib_u_arm_cq(struct ibv_cq *ibvcq, int solicited);
++void xib_u_cq_event(struct ibv_cq *cq);
++int xib_u_destroy_cq(struct ibv_cq *cq);
++int xib_u_query_qp(struct ibv_qp *ibqp, struct ibv_qp_attr *attr,
++			int attr_mask, struct ibv_qp_init_attr *init_attr);
++int xib_u_modify_qp(struct ibv_qp *qp, struct ibv_qp_attr *attr,
++				   int attr_mask);
++int xib_u_destroy_qp(struct ibv_qp *ibqp);
++int xib_u_post_send(struct ibv_qp *ibvqp, struct ibv_send_wr *wr,
++				   struct ibv_send_wr **bad_wr);
++int xib_u_post_recv(struct ibv_qp *ibvqp, struct ibv_recv_wr *wr,
++				   struct ibv_recv_wr **bad_wr);
++#endif
+diff --git a/providers/xib/xib_u_abi.h b/providers/xib/xib_u_abi.h
+new file mode 100755
+index 000000000..2f3e24cc9
+--- /dev/null
++++ b/providers/xib/xib_u_abi.h
+@@ -0,0 +1,17 @@
++#ifndef _XIB_U_ABI_H
++#define _XIB_U_ABI_H
++
++#include <infiniband/kern-abi.h>
++#include <rdma/xib-abi.h>
++#include <kernel-abi/xib-abi.h>
++
++DECLARE_DRV_CMD(xib_alloc_pd, IB_USER_VERBS_CMD_ALLOC_PD,
++		empty, xib_ib_alloc_pd_resp);
++DECLARE_DRV_CMD(xib_create_cq, IB_USER_VERBS_CMD_CREATE_CQ,
++		xib_ib_create_cq, xib_ib_create_cq_resp);
++DECLARE_DRV_CMD(xib_create_qp, IB_USER_VERBS_CMD_CREATE_QP,
++		xib_ib_create_qp, xib_ib_create_qp_resp);
++DECLARE_DRV_CMD(xib_alloc_ucontext, IB_USER_VERBS_CMD_GET_CONTEXT,
++		empty, xib_ib_alloc_ucontext_resp);
++
++#endif /* _XIB_U_ABI_H */
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+new file mode 100755
+index 000000000..3f80c1483
+--- /dev/null
++++ b/providers/xib/xib_u_verbs.c
+@@ -0,0 +1,913 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <errno.h>
++#include <pthread.h>
++#include <sys/mman.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <ccan/minmax.h>
++#include <umm_export.h>
++#include "xib_u.h"
++#include "xib_u_abi.h"
++
++#define XRNIC_RQ_BUF_SGE_SIZE	256
++#define XRNIC_SQ_WQE_SIZE	64
++#define CQE_SIZE	4
++/* In existing code, instead of using the user space buffers
++ * for RDMA_READ, the code uses SGL memory configured when create qp is
++ * called, and thus the data rx in READ response is being filled in the
++ * SGL memory but not in the user space buffer directly. The fix, that's
++ * being made here gs only for 32Bit machines */
++#define XIB_SGL_FIX 1
++#define XRNIC_DEF_RQ_DEPTH	16
++#define XRNIC_DEF_SQ_DEPTH	32
++
++static inline void xib_inc_sw_gsi_cons(struct xib_rq *rq)
++{
++	rq->gsi_cons = (rq->gsi_cons + 1) % rq->max_wr;
++}
++
++static inline void xib_rq_prod_inc(struct xib_rq *rq)
++{
++	rq->prod = (rq->prod + 1) % rq->max_wr;
++}
++
++static inline void xib_rq_cons_inc(struct xib_rq *rq)
++{
++	rq->cons = (rq->cons + 1) % rq->max_wr;
++}
++
++int xib_u_query_device(struct ibv_context *context,
++			struct ibv_device_attr *attr)
++{
++	int ret;
++	struct ibv_query_device cmd;
++	uint64_t raw_fw_ver;
++	unsigned int major, minor, sub_minor;
++
++	ret = ibv_cmd_query_device(context, attr, &raw_fw_ver, &cmd,
++				   sizeof(cmd));
++	if (ret)
++		return ret;
++
++	major	   = (raw_fw_ver >> 32) & 0xffff;
++	minor	   = (raw_fw_ver >> 16) & 0xffff;
++	sub_minor = raw_fw_ver & 0xffff;
++
++	snprintf(attr->fw_ver, sizeof(attr->fw_ver), "%d.%d.%03d", major, minor,
++		 sub_minor);
++
++	return 0;
++}
++
++int xib_u_query_port(struct ibv_context *context, uint8_t port,
++			struct ibv_port_attr *attr)
++{
++	struct ibv_query_port cmd;
++
++	memset(attr, 0, sizeof(struct ibv_port_attr));
++	return ibv_cmd_query_port(context, port, attr, &cmd, sizeof(cmd));
++}
++
++struct ibv_pd *xib_u_alloc_pd(struct ibv_context *context)
++{
++	struct ibv_alloc_pd cmd;
++	struct xib_pd *pd;
++	struct xib_alloc_pd_resp resp;
++
++	pd = (struct xib_pd *)malloc(sizeof(struct xib_pd));
++	if(!pd)
++		return NULL;
++
++	memset(pd, 0, sizeof(*pd));
++	memset(&cmd, 0, sizeof(cmd));
++
++	if (ibv_cmd_alloc_pd(context, &pd->ibv_pd, &cmd, sizeof(cmd),
++				&resp.ibv_resp, sizeof(resp))) {
++		free(pd);
++		return NULL;
++	}
++
++	pd->pdn = resp.pdn;
++
++	return &pd->ibv_pd;
++
++}
++
++int xib_u_free_pd(struct ibv_pd *pd)
++{
++	int ret;
++
++	ret = ibv_cmd_dealloc_pd(pd);
++	if (ret)
++		return ret;
++
++	free(get_xib_pd(pd));
++
++	return ret;
++}
++
++struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
++				int access)
++{
++	int ret;
++	unsigned int id;
++	struct ibv_mr *mr;
++	struct ibv_reg_mr cmd;
++	struct ib_uverbs_reg_mr_resp resp;
++
++	if(!addr) {
++		fprintf(stderr, "MR addr is NULL!\n");
++		return NULL;
++	}
++
++	if(!length) {
++		fprintf(stderr, "MR length is 0!\n");
++		return NULL;
++	}
++
++	mr = malloc(sizeof(struct ibv_mr));
++	if (!mr)
++		return NULL;
++
++	memset(mr, 0, sizeof(*mr));
++
++	ret = ibv_cmd_reg_mr(pd, addr, length, (uintptr_t) addr, access, mr,
++				&cmd, sizeof(cmd), &resp, sizeof(resp));
++	if (ret) {
++		free(mr);
++		return NULL;
++	}
++	id = xib_umm_get_chunk_id(pd->context, (unsigned long)addr);
++	if (id != XMEM_INVALID_CHUNK_ID) {
++		mr->lkey = id;
++	} else {
++		printf("%s:%d couldn't find chunk id for the given address [%#lx]\n",
++				__func__, __LINE__, addr);
++		free(mr);
++		return NULL;
++	}
++	return mr;
++}
++
++
++int xib_u_rereg_mr(struct ibv_mr *mr, int flags, struct ibv_pd *pd,
++			void *addr, size_t length, int access)
++{
++	struct ibv_rereg_mr cmd;
++	struct ib_uverbs_rereg_mr_resp resp;
++	int ret;
++
++
++	ret = ibv_cmd_rereg_mr(mr, flags, addr, length, (uintptr_t)addr,
++				access, pd, &cmd, sizeof(cmd), &resp,
++				sizeof(resp));
++	return ret;
++}
++
++
++int xib_u_dereg_mr(struct ibv_mr *mr)
++{
++	int ret;
++
++	ret = ibv_cmd_dereg_mr(mr);
++	if (ret)
++		return ret;
++
++	free(mr);
++
++	return ret;
++}
++
++
++struct ibv_cq *xib_u_create_cq(struct ibv_context *context, int cqe,
++				    struct ibv_comp_channel *channel,
++				    int comp_vector)
++{
++	struct xib_create_cq		cmd = {};
++	struct xib_create_cq_resp	resp = {};
++	struct xib_cq			*cq;
++	int				ret;
++
++	cq = calloc(1, sizeof(struct xib_cq));
++	if(!cq)
++		return NULL;
++
++	if (pthread_spin_init(&cq->lock, PTHREAD_PROCESS_PRIVATE))
++		goto err;
++
++	ret = ibv_cmd_create_cq(context, cqe, channel, comp_vector,
++				&cq->ibv_cq, &cmd.ibv_cmd, sizeof(cmd),
++				&resp.ibv_resp, sizeof(resp));
++	if (ret)
++		goto err_db;
++
++	cq->ibv_cq.cqe = cqe;
++	cq->sq = cq->rq = NULL;
++	return &cq->ibv_cq;
++err_db:
++err:
++	free(cq);
++	return NULL;
++
++}
++
++struct ibv_qp *xib_u_create_qp(struct ibv_pd *ibvpd,
++				struct ibv_qp_init_attr *attr)
++{
++	int ret, chunk_id, mem_type;
++	struct xib_context *context = get_xib_ctx(ibvpd->context);
++	struct xib_qp *qp = NULL;
++	struct xib_cq *send_cq, *recv_cq;
++	struct xib_create_qp cmd = {};
++	struct xib_create_qp_resp resp = {};
++	char *g;
++	unsigned int cq_depth;
++	uint64_t va;
++	struct xib_umm_create_ctx_resp *info;
++
++	qp = malloc(sizeof(struct xib_qp));
++	if (!qp) {
++		fprintf(stderr, "malloc failed\n");
++		return NULL;
++	}
++
++	if (pthread_spin_init(&qp->sq.lock, PTHREAD_PROCESS_PRIVATE) ||
++	    pthread_spin_init(&qp->rq.lock, PTHREAD_PROCESS_PRIVATE)) {
++		fprintf(stderr, "pthread_spin_init failed!\n");
++		goto err_free;
++	}
++
++	if (!attr->cap.max_send_wr) {
++		printf("SQ depth received is 0, setting it to default\n");
++		attr->cap.max_send_wr = XRNIC_DEF_SQ_DEPTH;
++	}
++	if (!(context && context->umem_ctx_resp)) {
++		pr_err("invalid umem context", -EINVAL);
++		return NULL;
++	}
++	info = context->umem_ctx_resp;
++	qp->sq.max_wr = attr->cap.max_send_wr;
++	qp->rq.max_wr = attr->cap.max_recv_wr;
++
++	/* Allocate SQ */
++	va = xib_umem_alloc_mem(ibvpd->context, info->sq_chunk_id,
++			(attr->cap.max_send_wr * XRNIC_SQ_WQE_SIZE));
++	if (!va) {
++		pr_err("Failed to allocate SQ", -EFAULT);
++		goto err_free;
++	}
++	qp->sq.sq_ba_v	= va;
++
++	{
++		volatile char *buf = va;
++		unsigned int page_size = getpagesize(), i = 0;
++		/* trigger inserting pages */
++		ret = ((attr->cap.max_send_wr * XRNIC_SQ_WQE_SIZE) + page_size - 1) / page_size;
++		for (i = 0; i < ret; i++)
++			buf[i * page_size] = 0;
++	}
++
++	/* Allocate CQ */
++	va = xib_umem_alloc_mem(ibvpd->context, info->cq_chunk_id,
++			(attr->cap.max_send_wr * CQE_SIZE));
++	if (!va) {
++		pr_err("Failed to allocate CQ", -EFAULT);
++		goto cq_fail;
++	}
++
++	send_cq = get_xib_cq(attr->send_cq);
++	send_cq->buf_v = va;
++	qp->cq_ba = va;
++
++	{
++		volatile char *buf = va;
++		unsigned int page_size = getpagesize(), i = 0;
++		/* trigger inserting pages */
++		ret = ((attr->cap.max_send_wr * CQE_SIZE) + page_size - 1) / page_size;
++		for (i = 0; i < ret; i++)
++			buf[i * page_size] = 0;
++	}
++
++	/* Allocate RQ */
++	va = xib_umem_alloc_mem(ibvpd->context, info->rq_chunk_id,
++			(attr->cap.max_recv_wr * attr->cap.max_recv_sge *
++			XRNIC_RQ_BUF_SGE_SIZE));
++	if (!va) {
++		pr_err("Failed to allocate RQ", -EFAULT);
++		goto rq_fail;
++	}
++	qp->rq.rq_ba_v = va;
++
++	{
++		volatile  char *buf = va;
++		unsigned int page_size = getpagesize(), i = 0;
++		/* trigger inserting pages */
++		ret = ((attr->cap.max_recv_wr * attr->cap.max_recv_sge * XRNIC_RQ_BUF_SGE_SIZE)
++					+ page_size - 1) / page_size;
++		for (i = 0; i < ret; i++)
++			buf[i * page_size] = 0;
++		ret = 0;
++	}
++
++	ret |= xib_umem_get_phy_addr(ibvpd->context, info->sq_chunk_id,
++				qp->sq.sq_ba_v, &cmd.sq_ba);
++
++	ret |= xib_umem_get_phy_addr(ibvpd->context, info->rq_chunk_id,
++				qp->rq.rq_ba_v, &cmd.rq_ba);
++
++	ret |= xib_umem_get_phy_addr(ibvpd->context, info->cq_chunk_id,
++				send_cq->buf_v, &cmd.cq_ba);
++	if (ret) {
++		printf("Failed to get phys address: %s:%d\n", __func__, __LINE__);
++		goto qp_fail;
++	}
++
++	if (!attr->cap.max_recv_wr) {
++		printf("RQ depth received is 0, setting it to default\n");
++		attr->cap.max_recv_wr = XRNIC_DEF_RQ_DEPTH;
++	}
++
++	ret = ibv_cmd_create_qp(ibvpd, &qp->ibv_qp, attr, &cmd.ibv_cmd,
++				sizeof(cmd), &resp.ibv_resp, sizeof(resp));
++	if (ret) {
++		fprintf(stderr, "ibv_cmd_create_qp failed!\n");
++		goto qp_fail;
++	}
++
++
++	qp->qpn = resp.qpn;
++
++	send_cq->qpn = resp.qpn;
++	send_cq->sq = &qp->sq;
++
++	recv_cq = get_xib_cq(attr->recv_cq);
++	recv_cq->qpn = resp.qpn;
++	recv_cq->rq = &qp->rq;
++#if 1
++	cq_depth = qp->sq.max_wr;
++#else
++	cq_depth = recv_cq->ibv_cq.cqe;
++#endif
++
++	/* RQ */
++	/* TODO : 2048 Bytes hardcoded values to be changed
++		1. What if address is 64 Bytes, how do this provides know that
++		2. What if QP count is more than 1024
++	*/
++	qp->rq.rq_db_addr = ((char*)context->rq_pi_shpg + resp.qpn * 4);
++		/* create rq list */
++	qp->rq.rqe_list = calloc(1, qp->rq.max_wr * sizeof (*qp->rq.rqe_list));
++	if (!qp->rq.rqe_list) {
++		pr_err("Failed to allocare rqe list", -ENOMEM);
++		goto qp_fail;
++	}
++
++	/* SQ */
++	qp->sq.wr_id_array = calloc(qp->sq.max_wr, sizeof(*qp->sq.wr_id_array));
++	if (!qp->sq.wr_id_array) {
++		fprintf(stderr, "Failed to create memory for wr id array %s:%d\n",
++			__func__, __LINE__);
++		free(qp->rq.rqe_list);
++		goto qp_fail;
++	}
++
++	qp->rq.prod = 0;
++	qp->rq.cons = 0;
++	qp->rq.gsi_cons = 0;
++	qp->rq.rq_wrptr_db_local = 0;
++	qp->sq.sq_cmpl_db_local = 0;
++	qp->sq.send_cq_db_local = 0;
++
++	qp->rq_buf_size = attr->cap.max_recv_sge * XRNIC_RQ_BUF_SGE_SIZE;
++	recv_cq->imm_data_chunk_id = xib_umem_alloc_mem_chunk_ex(ibvpd->context,
++					get_mem_type(info->rq_chunk_id),
++					attr->cap.max_recv_wr * sizeof(struct xib_imm_inv),
++					attr->cap.max_recv_wr * sizeof(struct xib_imm_inv),
++					attr->cap.max_recv_wr * sizeof(struct xib_imm_inv),
++					&va);
++
++	if ((recv_cq->imm_data_chunk_id < 0) || (va <= 0)) {
++		free(qp->rq.rqe_list);
++		goto imm_fail;
++	}
++
++	{
++		volatile  char *buf = va;
++		unsigned int page_size = getpagesize(), i = 0;
++		/* trigger inserting pages */
++		ret = ((attr->cap.max_recv_wr * sizeof(struct xib_imm_inv))
++						+ page_size - 1) / page_size;
++		for (i = 0; i < ret; i++)
++			buf[i * page_size] = 0;
++	}
++	recv_cq->imm_inv_data = (uintptr_t)va;
++	recv_cq->imm_data_depth = attr->cap.max_recv_wr;
++	return &qp->ibv_qp;
++imm_fail:
++	free(qp->sq.wr_id_array);
++	/* deallocate chunk */
++	if (!(recv_cq->imm_data_chunk_id < 0))
++		ret = xib_umem_free_chunk(ibvpd->context, recv_cq->imm_data_chunk_id);
++
++qp_fail:
++	/* deallocte RQ */
++	ret = xib_umem_free_mem(ibvpd->context, info->rq_chunk_id, qp->rq.rq_ba_v,
++			(qp->sq.max_wr * attr->cap.max_recv_sge *
++			XRNIC_RQ_BUF_SGE_SIZE));
++rq_fail:
++	/* deallocate CQ */
++	ret = xib_umem_free_mem(ibvpd->context, info->cq_chunk_id, qp->cq_ba,
++			(qp->sq.max_wr * XRNIC_SQ_WQE_SIZE));
++cq_fail:
++	/* deallocate SQ */
++	ret = xib_umem_free_mem(ibvpd->context, info->sq_chunk_id, qp->sq.sq_ba_v,
++			(qp->sq.max_wr * CQE_SIZE));
++err_free:
++	free(qp);
++	return NULL;
++}
++
++static int xib_u_get_rq_recd(struct xib_rq *rq, uint32_t rq_wr_current)
++{
++	int received;
++
++	if (rq_wr_current == rq->rq_wrptr_db_local) {
++		return 0;
++	}
++
++	if (rq->rq_wrptr_db_local > rq_wr_current) {
++		received = (rq_wr_current + rq->max_wr) -
++				rq->rq_wrptr_db_local;
++	} else {
++		received = rq_wr_current - rq->rq_wrptr_db_local;
++	}
++
++	return received;
++}
++
++#define XRNIC_RQ_CONS_IDX(q)		(0x234 + (q) * 0x100)
++static void xib_rq_db_consume(struct xib_context *context, int qpn, int val)
++{
++	volatile uint32_t *temp = (volatile uint32_t *)(context->db_addr + XRNIC_RQ_CONS_IDX(qpn));
++	*temp = val;
++}
++
++#define XRNIC_CQ_HEAD_PTR(q)		(0x230 + (q) * 0x100)
++  #define XRNIC_CQ_HEAD_PTR_MASK	0xffff
++static uint32_t xib_sq_cq_head(struct xib_context *context, int qpn)
++{
++	volatile uint32_t *temp = (volatile uint32_t *)(context->db_addr + XRNIC_CQ_HEAD_PTR(qpn)), val;
++
++	val = *temp;
++	val = *temp;
++	return val & XRNIC_CQ_HEAD_PTR_MASK;
++}
++
++/* check for RQ */
++int xib_u_pop_rq(struct xib_context *context, struct xib_rq *rq, int qpn, int num_entries)
++{
++	int i = 0, rq_pkt_num;
++	int received = 0, rq_wr_current;
++	uint64_t buf;
++	struct xib_rqe *rqe;
++	struct xib_qp *qp = container_of(rq, struct xib_qp, rq);
++
++	rq_wr_current = *(int *)(rq->rq_db_addr);
++
++	received = xib_u_get_rq_recd(rq, rq_wr_current);
++	if (received < 0)
++		return -EFAULT;
++	if (num_entries < received) {
++		received = num_entries;
++	}
++	for (i = 0; i < received; i++) {
++		if (rq->rq_wrptr_db_local == rq->max_wr)
++			rq->rq_wrptr_db_local = 0;
++
++		rq_pkt_num = rq->rq_wrptr_db_local;
++		buf = ((uint64_t)rq->rq_ba_v + (rq_pkt_num * qp->rq_buf_size));
++
++		/* pop out the wqe */
++		rqe = &rq->rqe_list[rq->gsi_cons];
++
++		copy_unaligned_data((uint8_t*)&rqe->sg_list[0]->addr, (uint8_t *)&buf,
++					sizeof rqe->sg_list[0]->addr);
++		xib_inc_sw_gsi_cons(rq);
++		rq->rq_wrptr_db_local++;
++
++		/* tell hw we consumed */
++		xib_rq_db_consume(context, qpn, rq->rq_wrptr_db_local);
++	}
++	return i;
++}
++
++int map_ernic_opcodes_to_std_ocode(int opcode)
++{
++	#define MAX_WC_OPCODES	13
++	int arr[MAX_WC_OPCODES][2] = {
++				{XRNIC_RDMA_WRITE, IBV_WC_RDMA_WRITE},
++				{XRNIC_RDMA_WRITE_WITH_IMM, IBV_WC_RDMA_WRITE},
++				{XRNIC_SEND_ONLY, IBV_WC_SEND},
++				{XRNIC_SEND_WITH_IMM, IBV_WC_SEND},
++				{XRNIC_RDMA_READ, IBV_WC_RDMA_READ},
++				{XRNIC_RSRVD_0, 0xFF},
++				{XRNIC_RSRVD_1, 0xFF},
++				{XRNIC_RSRVD_2, 0xFF},
++				{XRNIC_RSRVD_3, 0xFF},
++				{XRNIC_RSRVD_4, 0xFF},
++				{XRNIC_RSRVD_5, 0xFF},
++				{XRNIC_RSRVD_6, 0xFF},
++				{XRNIC_SEND_WITH_INV, IBV_WC_SEND}
++			};
++	if (opcode > MAX_WC_OPCODES)
++		return 0xFF;
++	return arr[opcode][1];
++}
++
++int xib_u_poll_cq(struct ibv_cq *ibvcq, int num_entries,
++				 struct ibv_wc *wc)
++{
++	struct xib_context *context = get_xib_ctx(ibvcq->context);
++	struct xib_cq *cq = get_xib_cq(ibvcq);
++	struct xib_rq *rq = cq->rq;
++	struct xib_sq *sq = cq->sq;
++	int i = 0;
++	volatile struct xrnic_cqe *cqe;
++	struct xib_rqe *rqe;
++	volatile struct xib_imm_inv *imm;
++	uint32_t cur_send_cq_head, err_flag, opcode;
++
++	pthread_spin_lock(&cq->lock);
++	if (rq) {
++		i = xib_u_pop_rq(context, rq, cq->qpn, num_entries);
++		if (i > 0) {
++			i = 0;
++			while (i < num_entries && rq->cons != rq->gsi_cons) {
++				memset(&wc[i], 0, sizeof(*wc));
++
++				rqe = &rq->rqe_list[rq->cons];
++				imm = (volatile struct xib_imm_inv *)&cq->imm_inv_data[rq->cons];
++
++				wc[i].qp_num = cq->qpn + 1;
++				wc[i].wr_id = rqe->wr_id;
++				wc[i].opcode = IBV_WC_RECV;
++
++				wc[i].byte_len = rqe->sg_list[0]->length;
++				wc[i].status = IBV_WC_SUCCESS;
++				if (imm->isvalid) {
++					if (imm->type == SEND_INVALIDATE) {
++						wc[i].wc_flags |= IBV_WC_WITH_INV;
++						wc[i].invalidated_rkey = imm->data;
++					} else if (imm->type == SEND_IMMEDIATE) {
++						wc[i].wc_flags |= IBV_WC_WITH_IMM;
++						wc[i].imm_data = imm->data;
++					}
++					imm->isvalid = false;
++				}
++				xib_rq_cons_inc(rq);
++				i++;
++			}
++		}
++	}
++
++	if (sq) {
++		cur_send_cq_head = xib_sq_cq_head(context, cq->qpn);
++
++		/*
++		printf("poll_cq: cur_send_cq_head: %d send_cq_db_local: %d\n",
++				cur_send_cq_head, sq->send_cq_db_local); */
++		/* send queue completions */
++		while (i < num_entries && sq->send_cq_db_local != cur_send_cq_head) {
++			if (sq->send_cq_db_local == sq->max_wr)
++				sq->send_cq_db_local = 0;
++			if (!sq->wr_id_array[sq->send_cq_db_local].signaled) {
++				/* skip the sqe if CQE not requested*/
++				sq->send_cq_db_local++;
++				continue;
++			}
++			sq->wr_id_array[sq->send_cq_db_local].signaled = false;
++			wc[i].wr_id = sq->wr_id_array[sq->send_cq_db_local].wr_id;
++
++			cqe = (volatile struct xrnic_cqe *)(cq->buf_v + (sq->send_cq_db_local * sizeof(struct
++						xrnic_cqe)));
++
++			opcode = (cqe->entry >> 16) & 0xFF;
++			if ((opcode == XRNIC_RDMA_WRITE_WITH_IMM) || (opcode == XRNIC_SEND_WITH_IMM))
++				wc[i].wc_flags |= IBV_WC_WITH_IMM;
++			else if (opcode == XRNIC_SEND_WITH_INV)
++				wc[i].wc_flags |= IBV_WC_WITH_INV;
++
++			opcode = map_ernic_opcodes_to_std_ocode((cqe->entry >> 16) & 0xFF);
++			/* CQ is of 32bit in len of which [23:16] represents opcode */
++			wc[i].opcode = opcode;
++
++			err_flag = (cqe->entry & 0xff000000) ? true : false;
++			if (!err_flag)
++				wc[i].status = IBV_WC_SUCCESS;
++
++			sq->send_cq_db_local++;
++			i++;
++		}
++	}
++	pthread_spin_unlock(&cq->lock);
++	return i;
++}
++
++
++int xib_u_arm_cq(struct ibv_cq *ibvcq, int solicited)
++{
++	return 0;
++}
++
++#define XRNIC_SQ_PROD_IDX(q)		(0x238 + (q) * 0x100)
++static void xib_sq_db_produce(struct xib_context *context, int qpn, int val)
++{
++	volatile uint32_t *temp = (volatile uint32_t *)(context->db_addr + XRNIC_SQ_PROD_IDX(qpn));
++
++	*temp = val & 0xffff;
++	*temp = val & 0xffff;
++}
++
++#define SQ_BASE_ALIGNED(addr)	(((unsigned long)(addr) & 31) == 0)
++
++void xib_u_send_wr(struct xib_qp *qp, struct xib_context *context,
++		struct xrnic_wr *xwqe)
++{
++	qp->sq.sq_cmpl_db_local++;
++
++	xib_sq_db_produce(context, qp->qpn, qp->sq.sq_cmpl_db_local);
++	if (qp->sq.sq_cmpl_db_local == qp->sq.max_wr)
++		qp->sq.sq_cmpl_db_local = 0;
++}
++
++void print_sge_data(char *buf, unsigned int size)
++{
++	unsigned int i = 0;
++	for (i = 0; i < size; i++) {
++		printf("%x ", buf[i]);
++		if (!(i % 16))
++			printf("\n");
++	}
++	printf("\n");
++}
++
++__inline void copy_unaligned_data(volatile uint8_t *dest, uint8_t *src, uint32_t size)
++{
++	unsigned int i;
++
++	for (i = 0; i < size; i++)
++		dest[i] = src[i];
++}
++
++int xib_u_post_send(struct ibv_qp *ibvqp, struct ibv_send_wr *wr,
++				   struct ibv_send_wr **bad_wr)
++{
++	struct xib_context *context = get_xib_ctx(ibvqp->context);
++	struct xib_qp *qp = get_xib_qp(ibvqp);
++	volatile struct xrnic_wr *xwqe;
++	uint8_t *buf;
++	uint32_t size = 0, opcode;
++	int i, ret = 0;
++	uint64_t phy_addr;
++
++	pthread_spin_lock(&qp->sq.lock);
++	while(wr) {
++		xwqe = (volatile struct xrnic_wr *)(qp->sq.sq_ba_v +
++			qp->sq.sq_cmpl_db_local	* sizeof(*xwqe));
++
++		xwqe->wrid = (wr->wr_id) & XRNIC_WR_ID_MASK;
++
++		qp->sq.wr_id_array[qp->sq.sq_cmpl_db_local].wr_id = wr->wr_id;
++		qp->sq.wr_id_array[qp->sq.sq_cmpl_db_local].signaled =
++                                                !!(wr->send_flags & IBV_SEND_SIGNALED);
++
++		/* copy it to sq buffer */
++		buf = qp->sq.send_sgl_v;
++
++		if (wr->opcode == IBV_WR_SEND) {
++			if (wr->num_sge && (wr->sg_list[0].length > XRNIC_MAX_SDATA)) {
++				if (wr->num_sge > XRNIC_MAX_SGE_CNT) {
++					if (wr->num_sge)
++						printf("Rx payload len %d is < minimum supported length %d\n",
++							wr->sg_list[0].length, XRNIC_MAX_SDATA);
++					else
++						printf("Number of SGEs can't be 0 %s:%d\n", __func__, __LINE__);
++					pthread_spin_unlock(&qp->sq.lock);
++					return -EINVAL;
++				}
++
++				for (i = 0; i < wr->num_sge; i++)
++					size += wr->sg_list[i].length;
++				ret = xib_umem_get_phy_addr(ibvqp->context, wr->sg_list[0].lkey,
++						(uintptr_t)wr->sg_list[0].addr, &phy_addr);
++				if (ret) {
++					pr_err("Unable to get phys addr from va", -EINVAL);
++					pthread_spin_unlock(&qp->sq.lock);
++					return -EINVAL;
++					size += wr->sg_list[i].length;
++				}
++				copy_unaligned_data((char *)&xwqe->l_addr, (char *)&phy_addr, sizeof xwqe->l_addr);
++			} else {
++				if (wr->num_sge && (wr->sg_list[0].length == XRNIC_MAX_SDATA)) {
++					/* copy to serial part of WR */
++					copy_unaligned_data((char *)xwqe->sdata, (char *)wr->sg_list[0].addr,
++								XRNIC_MAX_SDATA);
++					size = XRNIC_MAX_SDATA;
++				} else {
++					printf("Rx payload len %d is < minimum supported length %d\n",
++						wr->sg_list[0].length, XRNIC_MAX_SDATA);
++					pthread_spin_unlock(&qp->sq.lock);
++					return -EINVAL;
++				}
++			}
++		} else {
++			ret = xib_umem_get_phy_addr(ibvqp->context, wr->sg_list[0].lkey,
++					(uintptr_t)wr->sg_list[0].addr, &phy_addr);
++			if (ret) {
++				pr_err("Unable to get phys addr from va", -EINVAL);
++				pthread_spin_unlock(&qp->sq.lock);
++				return -EINVAL;
++			}
++			copy_unaligned_data((char *)&xwqe->l_addr, (char *)&phy_addr, sizeof xwqe->l_addr);
++			size = wr->sg_list[0].length;
++		}
++		xwqe->length = size;
++			copy_unaligned_data((uint8_t*)&xwqe->r_offset, (uint8_t*)&wr->wr.rdma.remote_addr,
++					sizeof wr->wr.rdma.remote_addr);
++		xwqe->r_tag = wr->wr.rdma.rkey;
++		switch (wr->opcode) {
++			case IBV_WR_SEND:
++				opcode = XRNIC_SEND_ONLY;
++			break;
++			case IBV_WR_RDMA_READ:
++				opcode = XRNIC_RDMA_READ;
++			break;
++			case IBV_WR_RDMA_WRITE:
++				opcode = XRNIC_RDMA_WRITE;
++			break;
++			case IBV_WR_RDMA_WRITE_WITH_IMM:
++				opcode = XRNIC_RDMA_WRITE_WITH_IMM;
++			break;
++			case IBV_WR_SEND_WITH_IMM:
++				opcode = XRNIC_SEND_WITH_IMM;
++			break;
++			case IBV_WR_SEND_WITH_INV:
++				opcode = XRNIC_SEND_WITH_INV;
++				xwqe->r_tag = wr->invalidate_rkey;
++			break;
++			default:
++				fprintf(stderr, "opcode: %d not supported\n", wr->opcode);
++				ret = -EINVAL;
++				pthread_spin_unlock(&qp->sq.lock);
++				goto fail;
++			break;
++		}
++
++		xwqe->opcode = opcode;
++//		if ((wr->opcode == IBV_WR_RDMA_WRITE_WITH_IMM) || (wr->opcode == IBV_WR_SEND_WITH_IMM))
++		xwqe->imm_data = be32toh(wr->imm_data);
++
++
++		/* re-write for cache */
++		xwqe->opcode = opcode;
++		if (xwqe->opcode == IBV_WR_SEND_WITH_INV)
++			xwqe->r_tag = wr->invalidate_rkey;
++		xwqe->imm_data = be32toh(wr->imm_data);
++		xib_u_send_wr(qp, context, xwqe);
++		wr = wr->next;
++	}
++	pthread_spin_unlock(&qp->sq.lock);
++	return 0;
++fail:
++	*bad_wr = wr;
++	return ret;
++}
++
++int xib_u_post_recv(struct ibv_qp *ibvqp, struct ibv_recv_wr *wr,
++				   struct ibv_recv_wr **bad_wr)
++{
++	struct xib_qp *qp = get_xib_qp(ibvqp);
++	struct xib_rq *rq = &qp->rq;
++	struct xib_rqe *rqe;
++
++	pthread_spin_lock(&rq->lock);
++	/* dont support sgl yet */
++	if (wr->num_sge > 1) {
++		*bad_wr = wr;
++		pthread_spin_unlock(&rq->lock);
++		fprintf(stderr, "%s: Dont support sgl yet\n", __func__);
++		return -EINVAL;
++	}
++
++	while (wr) {
++		rqe = &qp->rq.rqe_list[qp->rq.prod];
++		memset(rqe, 0, sizeof(struct xib_rqe));
++		rqe->sg_list[0] = &wr->sg_list[0]; /* TODO check if we get only
++						     one entry in gsi rq entry
++						   */
++		if (wr->num_sge > 1)
++			fprintf(stderr, "%s: warning! recv_wr num_sge: %d > 1 \n",
++				__func__, wr->num_sge);
++		rqe->wr_id = wr->wr_id;
++
++		xib_rq_prod_inc(&qp->rq);
++
++		wr = wr->next;
++	}
++	pthread_spin_unlock(&rq->lock);
++	return 0;
++}
++
++int xib_u_modify_qp(struct ibv_qp *qp, struct ibv_qp_attr *attr,
++				   int attr_mask)
++{
++	struct ibv_modify_qp cmd = {};
++	int ret;
++
++	ret = ibv_cmd_modify_qp(qp, attr, attr_mask, &cmd, sizeof(cmd));
++	if (ret) {
++		fprintf(stderr, "QP Modify: Failed command. ret=%d\n", ret);
++		return ret;
++	}
++	return 0;
++}
++
++
++int xib_u_query_qp(struct ibv_qp *ibqp, struct ibv_qp_attr *attr,
++			int attr_mask, struct ibv_qp_init_attr *init_attr)
++{
++	int ret;
++	struct ibv_query_qp cmd;
++
++	ret = ibv_cmd_query_qp(ibqp, attr, attr_mask, init_attr, &cmd,
++				sizeof(cmd));
++	if (ret)
++		return ret;
++
++	return 0;
++}
++
++int xib_u_destroy_qp(struct ibv_qp *ibqp)
++{
++	int ret;
++	struct xib_qp *qp = get_xib_qp(ibqp);
++	struct xib_umm_create_ctx_resp *info;
++	struct xib_context *context = get_xib_ctx(ibqp->context);
++
++	ret = ibv_cmd_destroy_qp(ibqp);
++	if (ret < 0) {
++		fprintf(stderr, "%s failed to destroy\n", __func__);
++	}
++	info = context->umem_ctx_resp;
++
++	/* deallocate chunks & imm data */
++
++	free(qp->sq.wr_id_array);
++	free(qp->rq.rqe_list);
++
++	/* deallocte RQ */
++	ret = xib_umem_free_mem(ibqp->context, info->rq_chunk_id,
++			(uintptr_t)qp->rq.rq_ba_v,
++			(qp->rq.max_wr * qp->rq_buf_size));
++	/* deallocate CQ */
++	ret = xib_umem_free_mem(ibqp->context, info->cq_chunk_id,
++			(uintptr_t)qp->cq_ba,
++			(qp->sq.max_wr * CQE_SIZE));
++
++	/* deallocate SQ */
++	ret = xib_umem_free_mem(ibqp->context, info->sq_chunk_id,
++			(uintptr_t)qp->sq.sq_ba_v,
++			(qp->sq.max_wr * XRNIC_SQ_WQE_SIZE));
++	free(qp);
++	return 0;
++}
++
++void xib_u_cq_event(struct ibv_cq *cq)
++{
++}
++
++
++int xib_u_destroy_cq(struct ibv_cq *ibcq)
++{
++	int ret;
++	struct xib_cq *cq = get_xib_cq(ibcq);
++
++	ret = ibv_cmd_destroy_cq(ibcq);
++	if (ret) {
++		fprintf(stderr, "%s: failed\n", __func__);
++	}
++	if (cq->rq)
++		/* delete imm data chunk */
++		if (!(cq->imm_data_chunk_id < 0)) {
++			/* free mem */
++			if (cq->imm_inv_data)
++				ret = xib_umem_free_mem(ibcq->context, cq->imm_data_chunk_id,
++					(uintptr_t)cq->imm_inv_data,
++					(cq->imm_data_depth * sizeof(*cq->imm_inv_data)));
++			ret = xib_umem_free_chunk(ibcq->context, cq->imm_data_chunk_id);
++		}
++	free(cq);
++	return 0;
++}
+diff --git a/util/udma_barrier.h b/util/udma_barrier.h
+old mode 100644
+new mode 100755
+index 3793d2f18..80f153d19
+--- a/util/udma_barrier.h
++++ b/util/udma_barrier.h
+@@ -102,6 +102,8 @@
+ #define udma_to_device_barrier() asm volatile("fence ow,ow" ::: "memory")
+ #elif defined(__mips__)
+ #define udma_to_device_barrier() asm volatile("sync" ::: "memory")
++#elif defined(__MICROBLAZEEL__)
++#define udma_to_device_barrier() asm volatile ("nop" ::: "memory")
+ #else
+ #error No architecture specific memory barrier defines found!
+ #endif
+@@ -140,6 +142,8 @@
+ #define udma_from_device_barrier() asm volatile("fence ir,ir" ::: "memory")
+ #elif defined(__mips__)
+ #define udma_from_device_barrier() asm volatile("sync" ::: "memory")
++#elif defined(__MICROBLAZEEL__)
++#define udma_from_device_barrier() asm volatile ("nop" ::: "memory")
+ #else
+ #error No architecture specific memory barrier defines found!
+ #endif
+@@ -213,6 +217,8 @@
+ #define mmio_flush_writes() s390_pciwb()
+ #elif defined(__mips__)
+ #define mmio_flush_writes() asm volatile("sync" ::: "memory")
++#elif defined(__MICROBLAZEEL__)
++#define mmio_flush_writes() asm volatile ("nop" ::: "memory")
+ #else
+ #error No architecture specific memory barrier defines found!
+ #endif

@@ -1,0 +1,2 @@
+This application can be used along with ktest_app kernel module to test
+RDMA READs & Write operations from x86 to ERNIC.

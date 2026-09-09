@@ -1,0 +1,167 @@
+/ {
+	memory@C000000000 {
+		device_type = "memory";
+		reg = <0x0 0x00000000 0x0 0x60000000>;
+	};
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		ps_reserved: buffer@0x60000000 {
+			compatible = "shared-dma-pool";
+                        no-map;
+			xlnx,proc-access = <0x1>;
+			reg = <0x00000000 0x60000000 0x0 0x20000000>;
+        	};
+
+		pl_reserved: buffer@0x400000000 {
+			compatible = "shared-dma-pool";
+                        no-map;
+			xlnx,proc-access = <0x1>;
+			reg = <0xC0 0x00000000 0x1 0x7F000000>;
+		};
+
+		pl_db_mem: buffer@0x45F000000 {
+			compatible = "shared-dma-pool";
+                        //no-map;
+			xlnx,proc-access = <0x1>;
+			reg = <0xC1 0x7F000000 0x0 0x1000000>;
+		};
+	};
+
+	pl_allocator@1 {
+		compatible = "xlnx,pl-allocator-1.0";
+		memory-region = <&pl_db_mem>;
+	};
+
+	xib_kmm@2 {
+		compatible = "xlnx,xib-kmm-1.0";
+		memory-region = <&ps_reserved>;
+		pl-mem-region = <&pl_reserved>;
+	};
+};
+&cips_block_axi_gpio_gt_reset_mask {
+	compatible = "xlnx,axi-gpio-2.0";
+};
+&cips_block_gtctrl {
+	compatible = "xlnx,axi-gpio-2.0";
+};
+
+&axi_dma_0 {
+	xlnx,include-dre ;
+};
+
+&ernic_subsystem_ernic_1 {
+	interrupt-names = "xrnic_intr0";
+	eth-handle = <&mrmac_wrapper_mrmac_block_mrmac_core_0_core>;
+        //xlnx,num-qp = <0x800>;
+};
+
+&memoryaxi_noc_0_ddr {
+	reg = <0x0 0x00000000 0x0 0x80000000>;
+};
+
+
+&amba_pl {
+        axi_bram_ctrl_0: axi_bram_ctrl@a0000000 {
+                compatible = "xlnx,axi-bram-ctrl-4.1";
+                reg = <0x0 0x90000000 0x0 0x100000>;
+                xlnx,proc-access = <0x0>;
+        };
+	mrmac_wrapper_mrmac_block_mrmac_core_0_core: mrmac@a4090000 {
+			clock-names = "s_axi_aclk", "rx_axi_clk", "rx_flexif_clk", "rx_ts_clk", "tx_axi_clk", "tx_flexif_clk", "tx_ts_clk";
+			//clocks = <&misc_clk_0>,  <&misc_clk_1>, <&misc_clk_1>;
+			compatible = "xlnx,mrmac-1.3", "xlnx,mrmac-100g-ethernet-1.0";
+			reg = <0x0 0xa4040000 0x0 0x1000>;
+			xlnx,gtpll = <&cips_block_axi_gpio_gt_reset_mask>;
+			xlnx,gtctrl = <&cips_block_gtctrl>;
+			xlnx,gtlane = <0>;
+			axistream-connected = <&axi_dma_0>;
+			xlnx,mrmac-rate = <100000>;
+			xlnx,flex-port0-data-rate-c0 = "100GE";
+			xlnx,flex-port0-data-rate-c1 = "N/A";
+			xlnx,flex-port0-enable-time-stamping-c0 = <0>;
+			xlnx,flex-port0-enable-time-stamping-c1 = <0>;
+			xlnx,flex-port0-mode-c0 = "PCS/BASE-R";
+			xlnx,flex-port0-mode-c1 = "N/A";
+			xlnx,flex-slice0-cfg-c0 = "100G (IEEE 802.3) - RS(528 514)";
+			xlnx,flex-slice0-cfg-c1 = "FEC Disabled (Bypass)";
+			xlnx,gt-ch0-rx-buffer-mode-c0 = <1>;
+			xlnx,gt-ch0-rx-buffer-mode-c1 = <1>;
+			xlnx,gt-ch0-rx-data-decoding-c0 = "RAW";
+			xlnx,gt-ch0-rx-data-decoding-c1 = "RAW";
+			xlnx,gt-ch0-rx-int-data-width-c0 = <80>;
+			xlnx,gt-ch0-rx-int-data-width-c1 = <80>;
+			xlnx,gt-ch0-rx-line-rate-c0 = "25.78125";
+			xlnx,gt-ch0-rx-line-rate-c1 = "25.78125";
+			xlnx,gt-ch0-rx-outclk-source-c0 = "RXPROGDIVCLK";
+			xlnx,gt-ch0-rx-outclk-source-c1 = "RXPROGDIVCLK";
+			xlnx,gt-ch0-rx-refclk-frequency-c0 = "322.265625";
+			xlnx,gt-ch0-rx-refclk-frequency-c1 = "156.25";
+			xlnx,gt-ch0-rx-user-data-width-c0 = <0x50>;
+			xlnx,gt-ch0-rx-user-data-width-c1 = <0x50>;
+			xlnx,gt-ch0-rxprogdiv-freq-enable-c0 = "true";
+			xlnx,gt-ch0-rxprogdiv-freq-enable-c1 = "true";
+			xlnx,gt-ch0-rxprogdiv-freq-source-c0 = "LCPLL";
+			xlnx,gt-ch0-rxprogdiv-freq-source-c1 = "LCPLL";
+			xlnx,gt-ch0-rxprogdiv-freq-val-c0 = "644.531";
+			xlnx,gt-ch0-rxprogdiv-freq-val-c1 = "644.531";
+			xlnx,gt-ch0-txprogdiv-freq-enable-c0 = "true";
+			xlnx,gt-ch0-txprogdiv-freq-enable-c1 = "true";
+			xlnx,gt-ch0-txprogdiv-freq-source-c0 = "LCPLL";
+			xlnx,gt-ch0-txprogdiv-freq-source-c1 = "LCPLL";
+			xlnx,mac-port0-enable-time-stamping-c0 = <0>;
+			xlnx,mac-port0-enable-time-stamping-c1 = <0>;
+			xlnx,mac-port0-rate-c0 = "100GE";
+			xlnx,mac-port0-rate-c1 = "N/A";
+			xlnx,mac-port0-rx-etype-gcp-c0 = <0x8808>;
+			xlnx,mac-port0-rx-etype-gcp-c1 = <0x8808>;
+			xlnx,mac-port0-rx-etype-gpp-c0 = <0x8808>;
+			xlnx,mac-port0-rx-etype-gpp-c1 = <0x8808>;
+			xlnx,mac-port0-rx-etype-pcp-c0 = <0x8808>;
+			xlnx,mac-port0-rx-etype-pcp-c1 = <0x8808>;
+			xlnx,mac-port0-rx-etype-ppp-c0 = <0x8808>;
+			xlnx,mac-port0-rx-etype-ppp-c1 = <0x8808>;
+			xlnx,mac-port0-rx-flow-c0 = <1>;
+			xlnx,mac-port0-rx-flow-c1 = <0>;
+			xlnx,mac-port0-rx-opcode-gpp-c0 = <0x0001>;
+			xlnx,mac-port0-rx-opcode-gpp-c1 = <0x0001>;
+			xlnx,mac-port0-rx-opcode-max-gcp-c0 = <0xFFFF>;
+			xlnx,mac-port0-rx-opcode-max-gcp-c1 = <0xFFFF>;
+			xlnx,mac-port0-rx-opcode-max-pcp-c0 = <0xFFFF>;
+			xlnx,mac-port0-rx-opcode-max-pcp-c1 = <0xFFFF>;
+			xlnx,mac-port0-rx-opcode-min-gcp-c0 = <0x0000>;
+			xlnx,mac-port0-rx-opcode-min-gcp-c1 = <0x0000>;
+			xlnx,mac-port0-rx-opcode-min-pcp-c0 = <0x0000>;
+			xlnx,mac-port0-rx-opcode-min-pcp-c1 = <0x0000>;
+			xlnx,mac-port0-rx-opcode-ppp-c0 = <0x0101>;
+			xlnx,mac-port0-rx-opcode-ppp-c1 = <0x0101>;
+			xlnx,mac-port0-rx-pause-da-mcast-c0 = <0x00000180 0xC2000001>;
+			xlnx,mac-port0-rx-pause-da-mcast-c1 = <0x00000180 0xC2000001>;
+			xlnx,mac-port0-rx-pause-da-ucast-c0 = <0x00000000 0x00000000>;
+			xlnx,mac-port0-rx-pause-da-ucast-c1 = <0x00000000 0x00000000>;
+			xlnx,mac-port0-rx-pause-sa-c0 = <0x00000000 0x00000000>;
+			xlnx,mac-port0-rx-pause-sa-c1 = <0x00000000 0x00000000>;
+			xlnx,mac-port0-tx-da-gpp-c0 = <0x00000180 0xC2000001>;
+			xlnx,mac-port0-tx-da-gpp-c1 = <0x00000180 0xC2000001>;
+			xlnx,mac-port0-tx-da-ppp-c0 = <0x00000180 0xC2000001>;
+			xlnx,mac-port0-tx-da-ppp-c1 = <0x00000180 0xC2000001>;
+			xlnx,mac-port0-tx-ethertype-gpp-c0 = <0x8808>;
+			xlnx,mac-port0-tx-ethertype-gpp-c1 = <0x8808>;
+			xlnx,mac-port0-tx-ethertype-ppp-c0 = <0x8808>;
+			xlnx,mac-port0-tx-ethertype-ppp-c1 = <0x8808>;
+			xlnx,mac-port0-tx-flow-c0 = <1>;
+			xlnx,mac-port0-tx-flow-c1 = <0>;
+			xlnx,mac-port0-tx-opcode-gpp-c0 = <0x0001>;
+			xlnx,mac-port0-tx-opcode-gpp-c1 = <0x0001>;
+			xlnx,mac-port0-tx-sa-gpp-c0 = <0x00000000 0x00000000>;
+			xlnx,mac-port0-tx-sa-gpp-c1 = <0x00000000 0x00000000>;
+			xlnx,mac-port0-tx-sa-ppp-c0 = <0x00000000 0x00000000>;
+			xlnx,mac-port0-tx-sa-ppp-c1 = <0x00000000 0x00000000>;
+			xlnx,port0-1588v2-clocking-c0 = "Ordinary/Boundary Clock";
+			xlnx,port0-1588v2-clocking-c1 = "Ordinary/Boundary Clock";
+			xlnx,port0-1588v2-operation-mode-c0 = "No operation";
+			xlnx,port0-1588v2-operation-mode-c1 = "No operation";
+		};
+};

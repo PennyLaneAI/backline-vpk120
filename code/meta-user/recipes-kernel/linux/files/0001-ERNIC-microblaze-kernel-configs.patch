@@ -1,0 +1,59 @@
+From 67918fe6310ccdafedf08c9cd6c65ecf1828a05d Mon Sep 17 00:00:00 2001
+From: priyadar <priyadarshini.babu@xilinx.com>
+Date: Fri, 3 Sep 2021 12:40:08 +0530
+Subject: [PATCH] ERNIC kernel configs
+
+Signed-off-by: priyadar <priyadarshini.babu@xilinx.com>
+---
+ arch/microblaze/configs/mmu_defconfig | 24 ++++++++++++++++++++++--
+ 1 file changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/arch/microblaze/configs/mmu_defconfig b/arch/microblaze/configs/mmu_defconfig
+index 0bf395a..de4237c 100644
+--- a/arch/microblaze/configs/mmu_defconfig
++++ b/arch/microblaze/configs/mmu_defconfig
+@@ -30,7 +30,9 @@ CONFIG_NET=y
+ CONFIG_PACKET=y
+ CONFIG_UNIX=y
+ CONFIG_INET=y
+-# CONFIG_IPV6 is not set
++CONFIG_IPV6=y
++CONFIG_IPV6_SIT=y
++CONFIG_IPV6_NDISC_NODETYPE=y
+ CONFIG_BRIDGE=m
+ CONFIG_PCI=y
+ CONFIG_DEVTMPFS=y
+@@ -59,7 +61,7 @@ CONFIG_XILINX_HWICAP=y
+ CONFIG_I2C=y
+ CONFIG_I2C_XILINX=y
+ CONFIG_SPI=y
+-CONFIG_SPI_XILINX=y
++# CONFIG_SPI_XILINX is not set
+ CONFIG_GPIOLIB=y
+ CONFIG_GPIO_SYSFS=y
+ CONFIG_GPIO_XILINX=y
+@@ -91,3 +93,21 @@ CONFIG_KGDB_KDB=y
+ CONFIG_DEBUG_SLAB=y
+ CONFIG_DETECT_HUNG_TASK=y
+ CONFIG_DEBUG_SPINLOCK=y
++CONFIG_BLK_DEV_INITRD=y
++CONFIG_KERNEL_BASE_ADDR=0xC0000000
++CONFIG_CMDLINE="console=ttyUL0,115200 earlycon"
++CONFIG_ADVANCED_OPTIONS=y
++CONFIG_LOWMEM_SIZE_BOOL=y
++CONFIG_KERNEL_START_BOOL=y
++CONFIG_LOWMEM_SIZE=0x10000000
++CONFIG_MANUAL_RESET_VECTOR=0x0
++CONFIG_KERNEL_START=0xa0000000
++CONFIG_TASK_SIZE=0x80000000
++CONFIG_UEVENT_HELPER=y
++CONFIG_UEVENT_HELPER_PATH=""
++CONFIG_INFINIBAND=y
++CONFIG_INFINIBAND_USER_MAD=y
++CONFIG_INFINIBAND_USER_ACCESS=y
++CONFIG_INFINIBAND_USER_MEM=y
++CONFIG_INFINIBAND_ON_DEMAND_PAGING=y
++CONFIG_INFINIBAND_ADDR_TRANS=y
+-- 
+1.8.3.1
+

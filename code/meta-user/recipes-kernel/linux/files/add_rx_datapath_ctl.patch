@@ -1,0 +1,217 @@
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet.h b/drivers/net/ethernet/xilinx/xilinx_axienet.h
+index 21e6ec2bd4ea..1e0900a49bc1 100644
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet.h
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet.h
+@@ -639,8 +639,11 @@
+ 
+ #define MRMAC_GT_LANE_OFFSET		BIT(16)
+ #define MRMAC_MAX_GT_LANES		4
+-#define MRMAC_GT_100G_RST_VALUE		0xF02
+-#define	MRMAC_GT_100G_LINE_RATE		0x2
++#define MRMAC_GT_100G_RST_VALUE		0x4B000F02
++#define	MRMAC_GT_100G_LINE_RATE		0x4B000002
++
++#define MRMAC_GT_RX_DATAPATH_CTRL_RESET        0x243F0
++#define MRMAC_GT_RX_DATAPATH_CTRL_STEADY_STATE 0x24300
+ 
+ #define MRMAC_CONFIG_TX_FLOW_CONTROL_REFRESH_REG1      0x0000004C
+ #define MRMAC_CONFIG_TX_FLOW_CONTROL_REFRESH_REG1_VAL  0xFFFFFFFF
+@@ -935,6 +938,7 @@ struct axienet_local {
+ 	u32 mrmac_rate;		/* MRMAC speed */
+ 	void __iomem *gt_pll;	/* Common GT PLL mask control register space */
+ 	void __iomem *gt_ctrl;	/* GT speed and reset control register space */
++	void __iomem *gt_rx  ;	/* GT rx  control register space */
+ 	u32 phc_index;		/* Index to corresponding PTP clock used  */
+ 	u32 gt_lane;		/* MRMAC GT lane index used */
+ 	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
+@@ -1313,6 +1317,7 @@ struct xxvenet_option {
+ 
+ extern void __iomem *mrmac_gt_pll;
+ extern void __iomem *mrmac_gt_ctrl;
++extern void __iomem *mrmac_gt_rx;
+ extern int mrmac_pll_reg;
+ extern int mrmac_pll_rst;
+ 
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+index 510b4db5976c..7d23ad41dc5f 100644
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+@@ -88,6 +88,9 @@ EXPORT_SYMBOL(mrmac_gt_pll);
+ void __iomem *mrmac_gt_ctrl;
+ EXPORT_SYMBOL(mrmac_gt_ctrl);
+ 
++void __iomem *mrmac_gt_rx;
++EXPORT_SYMBOL(mrmac_gt_rx);
++
+ int mrmac_pll_reg;
+ EXPORT_SYMBOL(mrmac_pll_reg);
+ 
+@@ -483,6 +486,8 @@ static inline void axienet_mrmac_100g_reset(struct axienet_local *lp)
+ {
+ 	u32 reg;
+ 
++        mdelay(10);
++        //printk("axienet_mrmac_100g_reset\n");
+ 	axienet_iow(lp, MRMAC_RESET_OFFSET, MRMAC_STS_ALL_MASK);
+ 	mdelay(MRMAC_RESET_DELAY);
+ 
+@@ -500,7 +505,11 @@ static inline void axienet_mrmac_100g_reset(struct axienet_local *lp)
+ 	reg |= MRMAC_CTL_PM_TICK_MASK;
+ 	axienet_iow(lp, MRMAC_MODE_OFFSET, reg);
+ 
++        axienet_iow(lp, MRMAC_CONFIG_RX_OFFSET, 0x00000403);
++        axienet_iow(lp, MRMAC_CONFIG_TX_OFFSET, 0x01000C07);
++
+ 	axienet_iow(lp, MRMAC_RESET_OFFSET, 0);
++
+ 	/* For Flow Control*/
+ 	axienet_iow(lp, MRMAC_CONFIG_RX_FLOW_CONTROL_CONTROL_REG1,
+ 			MRMAC_CONFIG_RX_FLOW_CONTROL_CONTROL_REG1_VAL);
+@@ -534,6 +543,8 @@ static inline int axienet_mrmac_100g_gt_reset(struct net_device *ndev)
+ 	struct axienet_local *lp = netdev_priv(ndev);
+ 	u32 err, val;
+ 
++        //printk("axienet_mrmac_100g_gt_reset\n");
++        mdelay(10);
+ 	iowrite32(MRMAC_GT_100G_RST_VALUE, lp->gt_ctrl);
+ 	iowrite32(MRMAC_GT_100G_LINE_RATE, lp->gt_ctrl);
+ 	if (mrmac_pll_rst == 0) {
+@@ -547,10 +558,48 @@ static inline int axienet_mrmac_100g_gt_reset(struct net_device *ndev)
+ 		}
+ 		//mrmac_pll_rst = 1; /* force pll every time for vpk120*/
+ 		netdev_info(ndev, "MRMAC 100G GT PLL LOCK complete\n");
++
++                iowrite32(MRMAC_GT_RX_DATAPATH_CTRL_RESET, lp->gt_rx);
++                mdelay(10);
++                iowrite32(MRMAC_GT_RX_DATAPATH_CTRL_STEADY_STATE, lp->gt_rx);
++                mdelay(20);
++
++                /* Wait for PLL lock with timeout */
++                err = readl_poll_timeout(lp->gt_pll,
++                                         val, (val & MRMAC_GT_LOCK_MASK),
++                                         20, 2000000);//DELAY_OF_ONE_MILLISEC);;
++                if (err) {
++                    netdev_err(ndev, "MRMAC rx datpath reset not complete!\n");
++                    return -ENODEV;
++                }
+ 	}
+ 	return 0;
+ }
+ 
++static inline int axienet_mrmac_100g_gt_rx_reset(struct net_device *ndev)
++{
++	struct axienet_local *lp = netdev_priv(ndev);
++	u32 err, val;
++
++        //printk("axienet_mrmac_100g_gt_rx_reset\n");
++        mdelay(10);
++	iowrite32(MRMAC_GT_RX_DATAPATH_CTRL_RESET, lp->gt_rx);
++        mdelay(10);
++	iowrite32(MRMAC_GT_RX_DATAPATH_CTRL_STEADY_STATE, lp->gt_rx);
++        mdelay(20);
++        /* Wait for PLL lock with timeout */
++        err = readl_poll_timeout(lp->gt_pll,
++                                 val, (val & MRMAC_GT_LOCK_MASK),
++                                 20, 2000000);//DELAY_OF_ONE_MILLISEC);;
++        if (err) {
++            netdev_err(ndev, "MRMAC rx datapath not reset!\n");
++            return -ENODEV;
++        }
++        //mrmac_pll_rst = 1; /* force pll every time for vpk120*/
++        netdev_info(ndev, "MRMAC rx datapath reset\n");
++	return 0;
++}
++
+ static inline void axienet_mrmac_reset(struct axienet_local *lp)
+ {
+ 	u32 val, reg;
+@@ -786,7 +835,10 @@ static int axienet_device_reset(struct net_device *ndev)
+ 		axienet_mrmac_100g_reset(lp);
+ 
+ 		if ((ret = axienet_mrmac_100g_gt_reset(ndev)))
+-			return ret ;
++                {
++//                    if((ret  = axienet_mrmac_100g_gt_rx_reset(ndev)))
++                        return ret;
++                }
+ 	}
+ 	for_each_rx_dma_queue(lp, i) {
+ 		q = lp->dq[i];
+@@ -2219,7 +2271,7 @@ static int axienet_open(struct net_device *ndev)
+ 		unsigned long timeout = jiffies;
+ 
+ 		/* Reset MRMAC */
+-		axienet_mrmac_100g_reset(lp);
++		//axienet_mrmac_100g_reset(lp);
+ 
+ 		mdelay(MRMAC_RESET_DELAY);
+ 		/* Check for block lock bit to be set. This ensures that
+@@ -2228,11 +2280,18 @@ static int axienet_open(struct net_device *ndev)
+ 		axienet_iow(lp, MRMAC_TX_STS_OFFSET, MRMAC_STS_ALL_MASK);
+ 		axienet_iow(lp, MRMAC_RX_STS_OFFSET, MRMAC_STS_ALL_MASK);
+ 		axienet_iow(lp, MRMAC_STATRX_BLKLCK_OFFSET, MRMAC_STS_ALL_MASK);
++                int first_time = 1;
+ 
+ 		while (!((val = axienet_ior(lp, MRMAC_RX_STS_OFFSET)) &
+ 					MRMAC_RX_ALIGN_MASK)) {
+ 			axienet_iow(lp, MRMAC_RX_STS_OFFSET, MRMAC_STS_ALL_MASK);
+-			mdelay(2000);
++                        mdelay(1000);
++                        if(first_time)
++                        {
++                            axienet_mrmac_100g_gt_rx_reset(ndev);
++                            first_time = 0;
++                        }
++                        mdelay(1000);
+ 			if (time_after(jiffies, (timeout + XCMAC_RX_ALIGN_TIME_OUT * HZ))) {
+ 				pr_err("MRMAC 100G RX alignment timeout!\n");
+ 				break;
+@@ -4026,11 +4085,12 @@ static int axienet_probe(struct platform_device *pdev)
+ 
+ 	if (lp->axienet_config->mactype == XAXIENET_MRMAC ||
+ 	    lp->axienet_config->mactype == XAXIENET_MRMAC_100G) {
+-		struct resource gtpll, gtctrl;
++            struct resource gtpll, gtctrl, gtrx;
+ 
+ 		if (mrmac_pll_reg) {
+ 			lp->gt_pll = mrmac_gt_pll;
+ 			lp->gt_ctrl = mrmac_gt_ctrl;
++                        lp->gt_rx = mrmac_gt_rx;
+ 		} else {
+ 			np = of_parse_phandle(pdev->dev.of_node,
+ 					      "xlnx,gtpll", 0);
+@@ -4082,8 +4142,34 @@ static int axienet_probe(struct platform_device *pdev)
+ 				goto cleanup_clk;
+ 			}
+ 
++			np = of_parse_phandle(pdev->dev.of_node,
++					      "xlnx,gtrx", 0);
++			if (IS_ERR(np)) {
++				dev_err(&pdev->dev,
++					"couldn't find GT RX\n");
++				ret = PTR_ERR(np);
++				goto cleanup_clk;
++			}
++
++			ret = of_address_to_resource(np, 0, &gtrx);
++			if (ret) {
++				dev_err(&pdev->dev,
++					"unable to get GT RX resource\n");
++				goto cleanup_clk;
++			}
++
++			lp->gt_rx = devm_ioremap_resource(&pdev->dev,
++							    &gtrx);
++			if (IS_ERR(lp->gt_rx)) {
++				dev_err(&pdev->dev,
++					"couldn't map GT RX regs\n");
++				ret = PTR_ERR(lp->gt_ctrl);
++				goto cleanup_clk;
++			}
++
+ 			mrmac_gt_pll = lp->gt_pll;
+ 			mrmac_gt_ctrl = lp->gt_ctrl;
++                        mrmac_gt_rx = lp->gt_rx;
+ 			mrmac_pll_reg = 1;
+ 		}
+ #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP

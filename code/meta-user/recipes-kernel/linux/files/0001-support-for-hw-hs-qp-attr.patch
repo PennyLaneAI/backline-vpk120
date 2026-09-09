@@ -1,0 +1,27 @@
+diff --git a/include/uapi/rdma/ib_user_verbs.h b/include/uapi/rdma/ib_user_verbs.h
+old mode 100644
+new mode 100755
+index e16650f0c85d..8e12a4de29e5
+--- a/include/uapi/rdma/ib_user_verbs.h
++++ b/include/uapi/rdma/ib_user_verbs.h
+@@ -610,6 +610,20 @@ enum {
+ 	IB_UVERBS_CREATE_QP_SUP_COMP_MASK = IB_UVERBS_CREATE_QP_MASK_IND_TABLE,
+ };
+ 
++enum {
++	/*
++	 * This value is equal to IB_QP_DEST_QPN.
++	 */
++	IB_USER_LEGACY_LAST_QP_ATTR_MASK = 1ULL << 29,
++};
++
++enum {
++	/*
++	 * This value is equal to IB_QP_RATE_LIMIT.
++	 */
++	IB_USER_LAST_QP_ATTR_MASK = 1ULL << 25,
++};
++
+ struct ib_uverbs_ex_create_qp {
+ 	__aligned_u64 user_handle;
+ 	__u32 pd_handle;

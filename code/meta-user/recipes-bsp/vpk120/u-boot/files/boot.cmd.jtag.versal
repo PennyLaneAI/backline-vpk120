@@ -1,0 +1,63 @@
+
+# Generate boot.scr:
+# mkimage -c none -A arm -T script -d boot.cmd.default boot.scr
+#
+################
+
+
+for boot_target in ${boot_targets};
+do
+	if test "${boot_target}" = "jtag" ; then
+		booti 0x00080000 0x04000000 0x00001000
+		exit;
+	fi
+	if test "${boot_target}" = "mmc0" || test "${boot_target}" = "mmc1" ; then
+		if test -e ${devtype} ${devnum}:${distro_bootpart} /image.ub; then
+			fatload ${devtype} ${devnum}:${distro_bootpart} 0x10000000 image.ub;
+			bootm 0x10000000;
+			exit;
+                fi
+		if test -e ${devtype} ${devnum}:${distro_bootpart} /Image; then
+			fatload ${devtype} ${devnum}:${distro_bootpart} 0x00080000 Image;;
+		fi
+		if test -e ${devtype} ${devnum}:${distro_bootpart} /system.dtb; then
+			fatload ${devtype} ${devnum}:${distro_bootpart} 0x00001000 system.dtb;
+		fi
+		if test -e ${devtype} ${devnum}:${distro_bootpart} /rootfs.cpio.gz.u-boot; then
+			fatload ${devtype} ${devnum}:${distro_bootpart} 0x04000000 rootfs.cpio.gz.u-boot;
+			booti 0x00080000 0x04000000 0x00001000
+			exit;
+		fi
+		booti 0x00080000 - 0x00001000
+		exit;
+	fi
+	if test "${boot_target}" = "xspi0" || test "${boot_target}" = "qspi" || test "${boot_target}" = "qspi0"; then
+		sf probe 0 0 0;
+		if test "image.ub" = "image.ub"; then
+			sf read 0x10000000 0xF00000 0x6400000;
+			bootm 0x10000000;
+			exit;
+		fi
+		if test "image.ub" = "Image"; then
+			sf read 0x00080000 0xF00000 0x1D00000;
+			sf read 0x04000000 0x2E00000 0x4000000
+			booti 0x00080000 0x04000000 0x00001000
+			exit;
+		fi
+		exit;
+	fi
+	if test "${boot_target}" = "nand" || test "${boot_target}" = "nand0"; then
+		nand info
+		if test "image.ub" = "image.ub"; then
+			nand read 0x10000000 0x4100000 0x6400000;
+			bootm 0x10000000;
+			exit;
+		fi
+		if test "image.ub" = "Image"; then
+			nand read 0x00080000 0x4100000 0x3200000;
+			nand read 0x04000000 0x8200000  0x3200000;
+			booti 0x00080000 0x04000000 0x00001000
+			exit;
+		fi
+	fi
+done

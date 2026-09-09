@@ -1,0 +1,14 @@
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+index badf283b9..955b587d6 100644
+--- a/providers/xib/xib_u_verbs.c
++++ b/providers/xib/xib_u_verbs.c
+@@ -702,7 +702,8 @@ int xib_u_poll_cq(struct ibv_cq *ibvcq, int num_entries,
+ 			err_flag = (cqe->entry & 0xff000000) ? true : false;
+ 			if (!err_flag)
+ 				wc[i].status = IBV_WC_SUCCESS;
+-
++                        else
++                                wc[i].status = IBV_WC_FATAL_ERR;
+ 			sq->send_cq_db_local++;
+ 			i++;
+ 		}

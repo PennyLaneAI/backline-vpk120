@@ -1,0 +1,87 @@
+/ {
+	memory@C0000000 {
+		device_type = "memory";
+		xlnx,proc-access = <0x1>;
+		reg = <0xc0000000 0x10000000>;
+	};
+	chosen {
+		bootargs = "modprobe.blacklist=xilinx_ib,xilinx_kmm,pl_allocator";
+		stdout-path = "serial0:115200n8";
+	};
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		pl_reserved: buffer@0xe0000000 {
+			compatible = "shared-dma-pool";
+                        no-map;
+			xlnx,proc-access = <0x1>;
+			reg = <0xd0000000 0x30000000>;
+        	};
+	};
+
+	xib_kmm@2 {
+		compatible = "xlnx,xib-kmm-1.0";
+		pl-mem-region = <&pl_reserved>;
+	};
+};
+
+&axi_dma_0 {
+        compatible = "rx,axi-dma-1.00.a";
+        xlnx,include-dre;
+};
+
+&cmac_usplus_0{
+	compatible = "xlnx,cmac-usplus-2.4";
+        axistream-connected = <&axi_dma_0>;
+	axigpio-handle = <&axi_gpio_0>;
+        local-mac-address = [00 0a 35 00 00 01];
+        xlnx,rx-pause-da-mcast = <0x0> ;
+        xlnx,tx-da-gpp = <0x0>;
+        xlnx,tx-da-ppp = <0x0>;
+};
+
+&amba_pl {
+	axi_bram_ctrl_0: axi_bram_ctrl@a0000000 {
+			compatible = "xlnx,axi-bram-ctrl-4.1";
+			reg = <0xa0000000 0x100000>;
+			xlnx,bram-addr-width = <0xe>;
+			xlnx,bram-inst-mode = "EXTERNAL";
+			xlnx,ecc = <0x0>;
+			xlnx,ecc-onoff-reset-value = <0x0>;
+			xlnx,ecc-type = <0x0>;
+			xlnx,fault-inject = <0x0>;
+			xlnx,memory-depth = <0x4000>;
+			xlnx,rd-cmd-optimization = <0x0>;
+			xlnx,read-latency = <0x1>;
+			xlnx,s-axi-ctrl-addr-width = <0x20>;
+			xlnx,s-axi-ctrl-data-width = <0x20>;
+			xlnx,s-axi-id-width = <0x5>;
+			xlnx,s-axi-supports-narrow-burst = <0x1>;
+			xlnx,single-port-bram = <0x0>;
+			xlnx,proc-access = <0x0>;
+	};
+	ext_ddr0: ext_ddr@80200000 {
+		compatible = "xlnx,ddr4-2.2";
+		xlnx,proc-access = <0x0>;
+		reg = <0x4 0x00000000 0x4 0x00000000>;
+	};
+};
+
+&ernic_1 {
+  interrupt-names = "xrnic_intr0";
+  interrupts = <4 2>;
+  eth-handle = <&cmac_usplus_0>;
+  axidma-handle = <&axi_dma_Ieth_Immdt>;
+  axitimer-handle = <&axi_timer_1>;
+  xlnx,hh-base = <0xE0000000>;
+  xlnx,hh-alloc-size = <0x20000000>;
+};
+
+&axi_timer_1 {
+	compatible = "xlnx,axi-timer-2.0";
+};
+&axi_gpio_0 {
+	compatible = "xlnx,axi-gpio-2.0";
+};

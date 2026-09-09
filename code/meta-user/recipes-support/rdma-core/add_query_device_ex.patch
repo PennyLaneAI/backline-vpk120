@@ -1,0 +1,45 @@
+diff --git a/providers/xib/xib_u.c b/providers/xib/xib_u.c
+index f4ce6fc52..b6693dc6a 100644
+--- a/providers/xib/xib_u.c
++++ b/providers/xib/xib_u.c
+@@ -23,6 +23,32 @@ static const struct verbs_match_ent hca_table[] = {
+ 	{}
+ };
+ 
++static int xib_query_device_ex(struct ibv_context *context,
++			    const struct ibv_query_device_ex_input *input,
++			    struct ibv_device_attr_ex *attr, size_t attr_size)
++{
++	struct ib_uverbs_ex_query_device_resp resp;
++	size_t resp_size = sizeof(resp);
++	uint64_t raw_fw_ver;
++	unsigned int major, minor, sub_minor;
++	int ret;
++
++	ret = ibv_cmd_query_device_any(context, input, attr, attr_size, &resp,
++				       &resp_size);
++	if (ret)
++		return ret;
++
++	raw_fw_ver = resp.base.fw_ver;
++	major = (raw_fw_ver >> 32) & 0xffff;
++	minor = (raw_fw_ver >> 16) & 0xffff;
++	sub_minor = raw_fw_ver & 0xffff;
++
++	snprintf(attr->orig_attr.fw_ver, sizeof(attr->orig_attr.fw_ver),
++		 "%d.%d.%d", major, minor, sub_minor);
++
++	return 0;
++}
++
+ static int xib_map_doorbells(struct xib_context *context, int page_size, int cmd_fd)
+ {
+ 	context->db_addr = mmap(NULL, context->db_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+@@ -73,6 +99,7 @@ static void xib_free_context(struct ibv_context *ibctx)
+ 
+ static const struct verbs_context_ops xib_ctx_common_ops = {
+ //	.query_device		= xib_u_query_device,
++        .query_device_ex        = xib_query_device_ex,
+ 	.query_port		= xib_u_query_port,
+ 	.alloc_pd		= xib_u_alloc_pd,
+ 	.dealloc_pd		= xib_u_free_pd,

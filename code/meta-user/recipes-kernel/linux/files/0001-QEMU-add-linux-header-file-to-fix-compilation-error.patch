@@ -1,0 +1,27 @@
+From 26b128f682fbd8af576a0090d34b840a7b78c461 Mon Sep 17 00:00:00 2001
+From: priyadar <priyadarshini.babu@xilinx.com>
+Date: Tue, 8 Jun 2021 11:44:59 +0530
+Subject: [PATCH] QEMU add linux header file to fix compilation error
+
+Added falloc.h header file.
+
+Signed-off-by: priyadar <priyadarshini.babu@xilinx.com>
+---
+ linux-user/strace.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/linux-user/strace.c b/linux-user/strace.c
+index 1398134..24c3e97 100644
+--- a/linux-user/strace.c
++++ b/linux-user/strace.c
+@@ -9,6 +9,7 @@
+ #include <netinet/tcp.h>
+ #include <linux/if_packet.h>
+ #include <linux/netlink.h>
++#include <linux/falloc.h>
+ #include <sched.h>
+ #include "qemu.h"
+ 
+-- 
+1.8.3.1
+

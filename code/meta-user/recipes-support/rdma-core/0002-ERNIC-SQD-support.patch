@@ -1,0 +1,299 @@
+diff --git a/providers/xib/xib_u.h b/providers/xib/xib_u.h
+index fb37ff3ef..0dccd525f 100755
+--- a/providers/xib/xib_u.h
++++ b/providers/xib/xib_u.h
+@@ -81,6 +81,11 @@ struct xib_rq {
+ 	struct xib_rqe		*rqe_list;
+ };
+ 
++struct xib_sqd {
++        uint64_t        wr_id;
++        struct xib_sqd *next;
++};
++
+ struct xib_sq {
+ 	pthread_spinlock_t	lock;
+ 	uint32_t		sq_cmpl_db_local;
+@@ -89,6 +94,8 @@ struct xib_sq {
+ 		uint64_t	wr_id;
+ 		bool		signaled;
+ 	} *wr_id_array;
++    	struct xib_sqd *sqd_wr_list;
++        uint64_t        sqd_length;
+ 	volatile void			*sq_ba_v;
+ 	volatile void			*send_sgl_v;
+ 	uint64_t		send_sgl_p;
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+index dff677c00..726443e34 100755
+--- a/providers/xib/xib_u_verbs.c
++++ b/providers/xib/xib_u_verbs.c
+@@ -615,6 +615,8 @@ int xib_u_poll_cq(struct ibv_cq *ibvcq, int num_entries,
+ 	struct xib_rqe *rqe;
+ 	volatile struct xib_imm_inv *imm;
+ 	uint32_t cur_send_cq_head, err_flag, opcode;
++	struct xib_sqd *temp, *head;
++	struct xib_qp *qp = container_of(rq, struct xib_qp, rq);
+ 
+ 	pthread_spin_lock(&cq->lock);
+ 	if (!cq->is_qp_valid) {
+@@ -693,6 +695,17 @@ int xib_u_poll_cq(struct ibv_cq *ibvcq, int num_entries,
+ 			sq->send_cq_db_local++;
+ 			i++;
+ 		}
++	        temp = sq->sqd_wr_list;
++        	while (i < num_entries && temp) {
++                        wc[i].wr_id = temp->wr_id;
++                	wc[i].status = IBV_WC_WR_FLUSH_ERR;
++                	i++;
++			head = temp;
++			temp = temp->next;
++			free(head);
++			sq->sqd_length--;
++               	}
++		sq->sqd_wr_list = temp;
+ 	}
+ 	pthread_spin_unlock(&cq->lock);
+ 	return i;
+@@ -754,112 +767,141 @@ int xib_u_post_send(struct ibv_qp *ibvqp, struct ibv_send_wr *wr,
+ 	uint32_t size = 0, opcode;
+ 	int i, ret = 0;
+ 	uint64_t phy_addr;
++	struct xib_sqd *temp = NULL;
+ 
+ 	pthread_spin_lock(&qp->sq.lock);
+-	while(wr) {
+-		xwqe = (volatile struct xrnic_wr *)(qp->sq.sq_ba_v +
+-			qp->sq.sq_cmpl_db_local	* sizeof(*xwqe));
+-
+-		xwqe->wrid = (wr->wr_id) & XRNIC_WR_ID_MASK;
+-
+-		qp->sq.wr_id_array[qp->sq.sq_cmpl_db_local].wr_id = wr->wr_id;
+-		qp->sq.wr_id_array[qp->sq.sq_cmpl_db_local].signaled =
+-                                                !!(wr->send_flags & IBV_SEND_SIGNALED);
+-
+-		/* copy it to sq buffer */
+-		buf = qp->sq.send_sgl_v;
+-
+-		if (wr->opcode == IBV_WR_SEND) {
+-			if (wr->num_sge && (wr->sg_list[0].length > XRNIC_MAX_SDATA)) {
+-				if (wr->num_sge > XRNIC_MAX_SGE_CNT) {
+-					if (wr->num_sge)
+-						printf("Rx payload len %d is < minimum supported length %d\n",
+-							wr->sg_list[0].length, XRNIC_MAX_SDATA);
+-					else
+-						printf("Number of SGEs can't be 0 %s:%d\n", __func__, __LINE__);
+-					pthread_spin_unlock(&qp->sq.lock);
+-					return -EINVAL;
+-				}
+-
+-				for (i = 0; i < wr->num_sge; i++)
+-					size += wr->sg_list[i].length;
+-				ret = xib_umem_get_phy_addr(ibvqp->context, wr->sg_list[0].lkey,
+-						(uintptr_t)wr->sg_list[0].addr, &phy_addr);
+-				if (ret) {
+-					pr_err("Unable to get phys addr from va", -EINVAL);
+-					pthread_spin_unlock(&qp->sq.lock);
+-					return -EINVAL;
+-					size += wr->sg_list[i].length;
+-				}
+-				copy_unaligned_data((char *)&xwqe->l_addr, (char *)&phy_addr, sizeof xwqe->l_addr);
++	if (qp->ibv_qp.state == IBV_QPS_SQD) {
++		while(wr && (qp->sq.sqd_length < qp->sq.max_wr)) {
++			if(!(qp->sq.sqd_wr_list)) {
++				qp->sq.sqd_wr_list = (struct xib_sqd *)malloc(sizeof(struct xib_sqd));
++				if(!(qp->sq.sqd_wr_list))
++					return -ENOMEM;
++				temp = qp->sq.sqd_wr_list;
+ 			} else {
+-				if (wr->num_sge && (wr->sg_list[0].length == XRNIC_MAX_SDATA)) {
+-					/* copy to serial part of WR */
+-					copy_unaligned_data((char *)xwqe->sdata, (char *)wr->sg_list[0].addr,
+-								XRNIC_MAX_SDATA);
+-					size = XRNIC_MAX_SDATA;
+-				} else {
+-					printf("Rx payload len %d is < minimum supported length %d\n",
+-						wr->sg_list[0].length, XRNIC_MAX_SDATA);
+-					pthread_spin_unlock(&qp->sq.lock);
+-					return -EINVAL;
+-				}
+-			}
+-		} else {
+-			ret = xib_umem_get_phy_addr(ibvqp->context, wr->sg_list[0].lkey,
+-					(uintptr_t)wr->sg_list[0].addr, &phy_addr);
+-			if (ret) {
+-				pr_err("Unable to get phys addr from va", -EINVAL);
+-				pthread_spin_unlock(&qp->sq.lock);
+-				return -EINVAL;
++				temp = qp->sq.sqd_wr_list;
++				while(temp->next)
++					temp = temp->next;
++				temp->next = (struct xib_sqd *)malloc(sizeof(struct xib_sqd));
++				if(!(temp->next))
++					return -ENOMEM;
++				temp = temp->next;
+ 			}
+-			copy_unaligned_data((char *)&xwqe->l_addr, (char *)&phy_addr, sizeof xwqe->l_addr);
+-			size = wr->sg_list[0].length;
++			temp->wr_id = wr->wr_id; 
++			temp->next = NULL;
++			wr = wr->next;
++			qp->sq.sqd_length++;
+ 		}
+-		xwqe->length = size;
+-			copy_unaligned_data((uint8_t*)&xwqe->r_offset, (uint8_t*)&wr->wr.rdma.remote_addr,
+-					sizeof wr->wr.rdma.remote_addr);
+-		xwqe->r_tag = wr->wr.rdma.rkey;
+-		switch (wr->opcode) {
+-			case IBV_WR_SEND:
+-				opcode = XRNIC_SEND_ONLY;
+-			break;
+-			case IBV_WR_RDMA_READ:
+-				opcode = XRNIC_RDMA_READ;
+-			break;
+-			case IBV_WR_RDMA_WRITE:
+-				opcode = XRNIC_RDMA_WRITE;
+-			break;
+-			case IBV_WR_RDMA_WRITE_WITH_IMM:
+-				opcode = XRNIC_RDMA_WRITE_WITH_IMM;
+-			break;
+-			case IBV_WR_SEND_WITH_IMM:
+-				opcode = XRNIC_SEND_WITH_IMM;
+-			break;
+-			case IBV_WR_SEND_WITH_INV:
+-				opcode = XRNIC_SEND_WITH_INV;
+-				xwqe->r_tag = wr->invalidate_rkey;
+-			break;
+-			default:
+-				fprintf(stderr, "opcode: %d not supported\n", wr->opcode);
+-				ret = -EINVAL;
+-				pthread_spin_unlock(&qp->sq.lock);
+-				goto fail;
+-			break;
+-		}
+-
+-		xwqe->opcode = opcode;
+-//		if ((wr->opcode == IBV_WR_RDMA_WRITE_WITH_IMM) || (wr->opcode == IBV_WR_SEND_WITH_IMM))
+-		xwqe->imm_data = be32toh(wr->imm_data);
+-
+-
+-		/* re-write for cache */
+-		xwqe->opcode = opcode;
+-		if (xwqe->opcode == IBV_WR_SEND_WITH_INV)
+-			xwqe->r_tag = wr->invalidate_rkey;
+-		xwqe->imm_data = be32toh(wr->imm_data);
+-		xib_u_send_wr(qp, context, xwqe);
+-		wr = wr->next;
++	        if(qp->sq.sqd_length > qp->sq.max_wr) {
++                        printf("%s: Number of work requests in SQD exceeded maximum limit \n", __func__);
++                        return -ENOMEM;
++                }
++		
++	} else {
++		while(wr) {
++			xwqe = (volatile struct xrnic_wr *)(qp->sq.sq_ba_v + 
++	 	       	qp->sq.sq_cmpl_db_local	* sizeof(*xwqe));
++
++	 	       xwqe->wrid = (wr->wr_id) & XRNIC_WR_ID_MASK;
++
++	 	       qp->sq.wr_id_array[qp->sq.sq_cmpl_db_local].wr_id = wr->wr_id;
++	 	       qp->sq.wr_id_array[qp->sq.sq_cmpl_db_local].signaled =
++         	                                       !!(wr->send_flags & IBV_SEND_SIGNALED);
++
++	 	       /* copy it to sq buffer */
++	 	       buf = qp->sq.send_sgl_v;
++
++	 	       if (wr->opcode == IBV_WR_SEND) {
++	 	       	if (wr->num_sge && (wr->sg_list[0].length > XRNIC_MAX_SDATA)) {
++	 	       		if (wr->num_sge > XRNIC_MAX_SGE_CNT) {
++	 	       			if (wr->num_sge)
++	 	       				printf("Rx payload len %d is < minimum supported length %d\n",
++	 	       					wr->sg_list[0].length, XRNIC_MAX_SDATA);
++	 	       			else
++	 	       				printf("Number of SGEs can't be 0 %s:%d\n", __func__, __LINE__);
++	 	       			pthread_spin_unlock(&qp->sq.lock);
++	 	       			return -EINVAL;
++	 	       		}
++
++	 	       		for (i = 0; i < wr->num_sge; i++)
++	 	       			size += wr->sg_list[i].length;
++	 	       		ret = xib_umem_get_phy_addr(ibvqp->context, wr->sg_list[0].lkey,
++	 	       				(uintptr_t)wr->sg_list[0].addr, &phy_addr);
++	 	       		if (ret) {
++	 	       			pr_err("Unable to get phys addr from va", -EINVAL);
++	 	       			pthread_spin_unlock(&qp->sq.lock);
++	 	       			return -EINVAL;
++	 	       			size += wr->sg_list[i].length;
++	 	       		}
++	 	       		copy_unaligned_data((char *)&xwqe->l_addr, (char *)&phy_addr, sizeof xwqe->l_addr);
++	 	       	} else {
++	 	       		if (wr->num_sge && (wr->sg_list[0].length == XRNIC_MAX_SDATA)) {
++	 	       			/* copy to serial part of WR */
++	 	       			copy_unaligned_data((char *)xwqe->sdata, (char *)wr->sg_list[0].addr,
++	 	       						XRNIC_MAX_SDATA);
++	 	       			size = XRNIC_MAX_SDATA;
++	 	       		} else {
++	 	       			printf("Rx payload len %d is < minimum supported length %d\n",
++	 	       				wr->sg_list[0].length, XRNIC_MAX_SDATA);
++	 	       			pthread_spin_unlock(&qp->sq.lock);
++	 	       			return -EINVAL;
++	 	       		}			
++	 	       	}
++	 	       } else {
++	 	       	ret = xib_umem_get_phy_addr(ibvqp->context, wr->sg_list[0].lkey,
++	 	       			(uintptr_t)wr->sg_list[0].addr, &phy_addr);
++	 	       	if (ret) {
++	 	       		pr_err("Unable to get phys addr from va", -EINVAL);
++	 	       		pthread_spin_unlock(&qp->sq.lock);
++	 	       		return -EINVAL;
++	 	       	}
++	 	       	copy_unaligned_data((char *)&xwqe->l_addr, (char *)&phy_addr, sizeof xwqe->l_addr);
++	 	       	size = wr->sg_list[0].length;
++	 	       }
++	 	       xwqe->length = size;
++       	 	       copy_unaligned_data((uint8_t*)&xwqe->r_offset, (uint8_t*)&wr->wr.rdma.remote_addr,
++	 	       			sizeof wr->wr.rdma.remote_addr);
++	 	       xwqe->r_tag = wr->wr.rdma.rkey;
++	 	       switch (wr->opcode) {
++	 	       	case IBV_WR_SEND:
++	 	       		opcode = XRNIC_SEND_ONLY;
++	 	       	break;
++	 	       	case IBV_WR_RDMA_READ:
++	 	       		opcode = XRNIC_RDMA_READ;
++	 	       	break;
++	 	       	case IBV_WR_RDMA_WRITE:
++	 	       		opcode = XRNIC_RDMA_WRITE;
++	 	       	break;
++	 	       	case IBV_WR_RDMA_WRITE_WITH_IMM:
++	 	       		opcode = XRNIC_RDMA_WRITE_WITH_IMM;
++	 	       	break;
++	 	       	case IBV_WR_SEND_WITH_IMM:
++	 	       		opcode = XRNIC_SEND_WITH_IMM;
++	 	       	break;
++	 	       	case IBV_WR_SEND_WITH_INV:
++	 	       		opcode = XRNIC_SEND_WITH_INV;
++	 	       		xwqe->r_tag = wr->invalidate_rkey;
++	 	       	break;
++	 	       	default:
++	 	       		fprintf(stderr, "opcode: %d not supported\n", wr->opcode);
++	 	       		ret = -EINVAL;
++	 	       		pthread_spin_unlock(&qp->sq.lock);
++	 	       		goto fail;
++	 	       	break;
++	 	       }
++
++	 	       xwqe->opcode = opcode;
++//	 	       if ((wr->opcode == IBV_WR_RDMA_WRITE_WITH_IMM) || (wr->opcode == IBV_WR_SEND_WITH_IMM))
++	 	       xwqe->imm_data = be32toh(wr->imm_data);
++
++
++	 	       /* re-write for cache */
++	 	       xwqe->opcode = opcode;
++	 	       if (xwqe->opcode == IBV_WR_SEND_WITH_INV)
++	 	       	xwqe->r_tag = wr->invalidate_rkey;
++	 	       xwqe->imm_data = be32toh(wr->imm_data);
++	 	       xib_u_send_wr(qp, context, xwqe);
++	 	       wr = wr->next;
++		}	
+ 	}
+ 	pthread_spin_unlock(&qp->sq.lock);
+ 	return 0;

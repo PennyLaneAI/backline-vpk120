@@ -1,0 +1,18 @@
+obj-m += xilinx_kmm.o
+
+xilinx_kmm-objs := xib_kmm.o
+
+SRC = $(CURDIR)
+ccflags-y += -DNO_NVMF
+ifeq ($(ARCH), arm64)
+ccflags-y += -DSQ_FROM_PL_DDR
+endif
+
+all:
+	make -C $(KERNEL_SRC) M=$(SRC) KBUILD_EXTRA_SYMBOLS=$(SRC)/../../pl-allocator/1.0/Module.symvers
+
+modules_install:
+	make -C $(KERNEL_SRC) M=$(SRC) modules_install
+
+clean:
+	make -C $(KERNEL_SRC) M=$(SRC) clean

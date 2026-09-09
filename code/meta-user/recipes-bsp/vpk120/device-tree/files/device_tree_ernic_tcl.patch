@@ -1,0 +1,14 @@
+--- a/ernic/data/ernic.tcl
++++ b/ernic/data/ernic.tcl
+@@ -26,11 +26,6 @@ proc generate {drv_handle} {
+ 	}
+ 	set ernic_ip [get_cells -hier $drv_handle]
+ 	set ip_name [get_property IP_NAME $ernic_ip]
+-
+-	set ethip [get_connected_ip $drv_handle "rx_pkt_hndler_s_axis"]
+-	if {[llength $ethip]} {
+-		set_drv_property $drv_handle eth-handle "$ethip" reference
+-	}
+ }
+ 
+ proc get_connected_ip {drv_handle dma_pin} {

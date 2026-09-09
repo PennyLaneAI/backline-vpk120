@@ -1,0 +1,22 @@
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+index d788eada28a4..b1f144f10e4f 100644
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+@@ -2232,7 +2232,7 @@ static int axienet_open(struct net_device *ndev)
+ 		while (!((val = axienet_ior(lp, MRMAC_RX_STS_OFFSET)) &
+ 					MRMAC_RX_ALIGN_MASK)) {
+ 			axienet_iow(lp, MRMAC_RX_STS_OFFSET, MRMAC_STS_ALL_MASK);
+-			mdelay(100);
++			mdelay(2000);
+ 			if (time_after(jiffies, (timeout + XCMAC_RX_ALIGN_TIME_OUT * HZ))) {
+ 				pr_err("MRMAC 100G RX alignment timeout!\n");
+ 				break;
+@@ -2242,7 +2242,7 @@ static int axienet_open(struct net_device *ndev)
+ 		while (!((val = axienet_ior(lp, MRMAC_STATRX_BLKLCK_OFFSET)) &
+ 					MRMAC_RX_100G_BLKLCK_MASK)) {
+ 			axienet_iow(lp, MRMAC_STATRX_BLKLCK_OFFSET, MRMAC_STS_ALL_MASK);
+-			mdelay(100);
++			mdelay(2000);
+ 			if (time_after(jiffies, (timeout + XCMAC_RX_ALIGN_TIME_OUT * HZ))) {
+ 				pr_err("MRMAC 100G RX block lock timeout!\n");
+ 				break;

@@ -1,0 +1,107 @@
+From 18b1f1311ad10da7d97a79f3a8294ebfd862a76f Mon Sep 17 00:00:00 2001
+From: root <root@localhost.localdomain>
+Date: Wed, 23 Mar 2022 16:57:15 +0530
+Subject: [PATCH] patch_to_enable_runall_option_for_perftest
+
+Signed-off-by: root <root@localhost.localdomain>
+---
+ src/read_bw.c   | 4 ++--
+ src/read_lat.c  | 3 ++-
+ src/send_bw.c   | 4 ++--
+ src/send_lat.c  | 4 ++--
+ src/write_bw.c  | 4 ++--
+ src/write_lat.c | 4 ++--
+ 6 files changed, 12 insertions(+), 11 deletions(-)
+
+diff --git a/src/read_bw.c b/src/read_bw.c
+index d5dde51..3824293 100755
+--- a/src/read_bw.c
++++ b/src/read_bw.c
+@@ -259,8 +259,8 @@ int main(int argc, char *argv[])
+ 	}
+ 
+ 	if (user_param.test_method == RUN_ALL) {
+-
+-		for (i = 1; i < 24 ; ++i) {
++                /*made starting i as 4 to enalbe run_all option*/
++		for (i = 4; i < 24 ; ++i) {
+ 
+ 			user_param.size = (uint64_t)1 << i;
+ 			ctx_set_send_wqes(&ctx,&user_param,rem_dest);
+diff --git a/src/read_lat.c b/src/read_lat.c
+index 2a9beb9..a6828aa 100755
+--- a/src/read_lat.c
++++ b/src/read_lat.c
+@@ -249,7 +249,8 @@ int main(int argc, char *argv[])
+ 	ctx_set_send_wqes(&ctx,&user_param,rem_dest);
+ 
+ 	if (user_param.test_method == RUN_ALL) {
+-		for (i = 1; i < 24 ; ++i) {
++                /*made starting i as 4 to enable run_all option*/
++		for (i = 4; i < 24 ; ++i) {
+ 			user_param.size = (uint64_t)1 << i;
+ 			if(run_iter_lat(&ctx,&user_param))
+ 				return 17;
+diff --git a/src/send_bw.c b/src/send_bw.c
+index 8184c2f..d654fd7 100755
+--- a/src/send_bw.c
++++ b/src/send_bw.c
+@@ -388,8 +388,8 @@ int main(int argc, char *argv[])
+ 
+ 		if (user_param.connection_type == UD)
+ 			size_max_pow =  (int)UD_MSG_2_EXP(MTU_SIZE(user_param.curr_mtu)) + 1;
+-
+-		for (i = 1; i < size_max_pow ; ++i) {
++                /*made starting i as 4 to enable run_all option*/
++		for (i = 4; i < size_max_pow ; ++i) {
+ 
+ 			user_param.size = (uint64_t)1 << i;
+ 
+diff --git a/src/send_lat.c b/src/send_lat.c
+index bc194d8..13fd224 100755
+--- a/src/send_lat.c
++++ b/src/send_lat.c
+@@ -401,8 +401,8 @@ int main(int argc, char *argv[])
+ 
+ 		if (user_param.connection_type == UD)
+ 			size_max_pow =  (int)UD_MSG_2_EXP(MTU_SIZE(user_param.curr_mtu)) + 1;
+-
+-		for (i = 1; i < size_max_pow ; ++i) {
++                /*made starting i as 4 to enable run_all option*/
++		for (i = 4; i < size_max_pow ; ++i) {
+ 
+ 			user_param.size = (uint64_t)1 << i;
+ 
+diff --git a/src/write_bw.c b/src/write_bw.c
+index cb31410..e26d806 100755
+--- a/src/write_bw.c
++++ b/src/write_bw.c
+@@ -256,8 +256,8 @@ int main(int argc, char *argv[])
+ 	}
+ 
+ 	if (user_param.test_method == RUN_ALL) {
+-
+-		for (i = 1; i < 24 ; ++i) {
++                /*made starting i as 4 to enable run_all option*/
++		for (i = 4; i < 24 ; ++i) {
+ 
+ 			user_param.size = (uint64_t)1 << i;
+ 			ctx_set_send_wqes(&ctx,&user_param,rem_dest);
+diff --git a/src/write_lat.c b/src/write_lat.c
+index 5e83260..157d04c 100755
+--- a/src/write_lat.c
++++ b/src/write_lat.c
+@@ -227,8 +227,8 @@ int main(int argc, char *argv[])
+ 	}
+ 
+ 	if (user_param.test_method == RUN_ALL) {
+-
+-		for (i = 1; i < 24 ; ++i) {
++                /*made starting i as 4 to enable run_all option*/
++		for (i = 4; i < 24 ; ++i) {
+ 			user_param.size = (uint64_t)1 << i;
+ 			if(run_iter_lat_write(&ctx,&user_param)) {
+ 				fprintf(stderr,"Test exited with Error\n");
+-- 
+1.8.3.1
+

@@ -1,0 +1,28 @@
+diff --git a/include/rdma/ib_verbs.h b/include/rdma/ib_verbs.h
+old mode 100644
+new mode 100755
+index 1b133f99a333..c231e89bcecb
+--- a/include/rdma/ib_verbs.h
++++ b/include/rdma/ib_verbs.h
+@@ -1263,6 +1263,7 @@ enum ib_qp_attr_mask {
+ #ifdef IB_CHANGES_XIB_NVMF
+ 	IB_QP_RST_RQ                    = (1<<26),
+ 	IB_QP_RST_SQ_CQ                 = (1<<27),
++	IB_ENABLE_QP_HW_ACCL		= (1<<28),
+ #endif
+ 
+ 	IB_QP_ATTR_STANDARD_BITS = GENMASK(20, 0),
+@@ -1318,7 +1319,12 @@ struct ib_qp_attr {
+ 	u32			rate_limit;
+ 	struct net_device	*xmit_slave;
+ #ifdef IB_CHANGES_XIB_NVMF
+-	int                     nvmf_rhost;
++	union {
++		int		nvmf_rhost;
++		/* Rx packets to be processed */
++		int		rx_pkt_pending;
++		
++	};
+ 	dma_addr_t              rq_ba_p;
+ 	dma_addr_t              sq_ba_p;
+ #endif

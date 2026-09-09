@@ -1,0 +1,230 @@
+diff --git a/kernel-headers/rdma/ib_user_ioctl_verbs.h b/kernel-headers/rdma/ib_user_ioctl_verbs.h
+old mode 100755
+new mode 100644
+diff --git a/kernel-headers/rdma/ib_user_verbs.h b/kernel-headers/rdma/ib_user_verbs.h
+old mode 100755
+new mode 100644
+diff --git a/kernel-headers/rdma/xib-abi.h b/kernel-headers/rdma/xib-abi.h
+old mode 100755
+new mode 100644
+diff --git a/libibverbs/cmd.c b/libibverbs/cmd.c
+old mode 100755
+new mode 100644
+diff --git a/libibverbs/driver.h b/libibverbs/driver.h
+old mode 100755
+new mode 100644
+diff --git a/libibverbs/dummy_ops.c b/libibverbs/dummy_ops.c
+old mode 100755
+new mode 100644
+diff --git a/libibverbs/kern-abi.h b/libibverbs/kern-abi.h
+old mode 100755
+new mode 100644
+diff --git a/libibverbs/libibverbs.map.in b/libibverbs/libibverbs.map.in
+index 189513537..8d4b79448 100755
+--- a/libibverbs/libibverbs.map.in
++++ b/libibverbs/libibverbs.map.in
+@@ -233,6 +233,7 @@ IBVERBS_PRIVATE_@IBVERBS_PABI_VERSION@ {
+ 		ibv_cmd_reg_dm_mr;
+ 		ibv_cmd_reg_dmabuf_mr;
+ 		ibv_cmd_reg_mr;
++		ibv_cmd_reg_mr_ex;
+ 		ibv_cmd_req_notify_cq;
+ 		ibv_cmd_rereg_mr;
+ 		ibv_cmd_resize_cq;
+diff --git a/libibverbs/verbs.c b/libibverbs/verbs.c
+old mode 100755
+new mode 100644
+diff --git a/libibverbs/verbs.h b/libibverbs/verbs.h
+old mode 100755
+new mode 100644
+diff --git a/librdmacm/examples/rping.c b/librdmacm/examples/rping.c
+old mode 100755
+new mode 100644
+diff --git a/providers/xib/xib_u.c b/providers/xib/xib_u.c
+old mode 100755
+new mode 100644
+index 130c1b9a6..859cdf6de
+--- a/providers/xib/xib_u.c
++++ b/providers/xib/xib_u.c
+@@ -70,7 +70,7 @@ static void xib_free_context(struct ibv_context *ibctx)
+ }
+ 
+ static const struct verbs_context_ops xib_ctx_common_ops = {
+-	.query_device		= xib_u_query_device,
++//	.query_device		= xib_u_query_device,
+ 	.query_port		= xib_u_query_port,
+ 	.alloc_pd		= xib_u_alloc_pd,
+ 	.dealloc_pd		= xib_u_free_pd,
+@@ -95,7 +95,7 @@ static const struct verbs_context_ops xib_ctx_common_ops = {
+ };
+ 
+ static struct verbs_context *xib_alloc_context(struct ibv_device *ibdev,
+-						int cmd_fd)
++						int cmd_fd, void *private_data)
+ {
+ 	struct xib_context *context;
+ 	struct ibv_get_context cmd;
+diff --git a/providers/xib/xib_u.h b/providers/xib/xib_u.h
+old mode 100755
+new mode 100644
+index 603e46720..0380fe9d8
+--- a/providers/xib/xib_u.h
++++ b/providers/xib/xib_u.h
+@@ -8,7 +8,7 @@
+ #include <infiniband/driver.h>
+ #include <util/udma_barrier.h>
+ #include <infiniband/verbs.h>
+-#include <ccan/bitmap.h>
++//#include <ccan/bitmap.h>
+ #include <ccan/container_of.h>
+ 
+ enum xrnic_wc_opcod {
+@@ -187,8 +187,8 @@ static inline struct xib_cq *get_xib_cq(struct ibv_cq *ibv_cq)
+ 	return container_of(ibv_cq, struct xib_cq, ibv_cq);
+ }
+ 
+-int xib_u_query_device(struct ibv_context *context,
+-			struct ibv_device_attr *attr);
++//int xib_u_query_device(struct ibv_context *context,
++//			struct ibv_device_attr *attr);
+ int xib_u_query_port(struct ibv_context *context, uint8_t port,
+ 			struct ibv_port_attr *attr);
+ struct ibv_pd *xib_u_alloc_pd(struct ibv_context *context);
+@@ -197,9 +197,9 @@ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 				uint64_t hca_va, int access);
+ struct ibv_mr *xib_u_reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length,
+ 				uint64_t hca_va, int access);
+-int xib_u_rereg_mr(struct ibv_mr *mr, int flags, struct ibv_pd *pd,
++int xib_u_rereg_mr(struct verbs_mr *mr, int flags, struct ibv_pd *pd,
+ 			void *addr, size_t length, int access);
+-int xib_u_dereg_mr(struct ibv_mr *mr);
++int xib_u_dereg_mr(struct verbs_mr *mr);
+ struct ibv_cq *xib_u_create_cq(struct ibv_context *context, int cqe,
+ 				    struct ibv_comp_channel *channel,
+ 				    int comp_vector);
+diff --git a/providers/xib/xib_u_abi.h b/providers/xib/xib_u_abi.h
+old mode 100755
+new mode 100644
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+old mode 100755
+new mode 100644
+index 55ccbf10a..d231857a3
+--- a/providers/xib/xib_u_verbs.c
++++ b/providers/xib/xib_u_verbs.c
+@@ -38,28 +38,28 @@ static inline void xib_rq_cons_inc(struct xib_rq *rq)
+ 	rq->cons = (rq->cons + 1) % rq->max_wr;
+ }
+ 
+-int xib_u_query_device(struct ibv_context *context,
+-			struct ibv_device_attr *attr)
+-{
+-	int ret;
+-	struct ibv_query_device cmd;
+-	uint64_t raw_fw_ver;
+-	unsigned int major, minor, sub_minor;
++/* int xib_u_query_device(struct ibv_context *context, */
++/* 			struct ibv_device_attr *attr) */
++/* { */
++/* 	int ret; */
++/* 	struct ibv_query_device cmd; */
++/* 	uint64_t raw_fw_ver; */
++/* 	unsigned int major, minor, sub_minor; */
+ 
+-	ret = ibv_cmd_query_device(context, attr, &raw_fw_ver, &cmd,
+-				   sizeof(cmd));
+-	if (ret)
+-		return ret;
++/* 	ret = ibv_cmd_query_device(context, attr, &raw_fw_ver, &cmd, */
++/* 				   sizeof(cmd)); */
++/* 	if (ret) */
++/* 		return ret; */
+ 
+-	major	   = (raw_fw_ver >> 32) & 0xffff;
+-	minor	   = (raw_fw_ver >> 16) & 0xffff;
+-	sub_minor = raw_fw_ver & 0xffff;
++/* 	major	   = (raw_fw_ver >> 32) & 0xffff; */
++/* 	minor	   = (raw_fw_ver >> 16) & 0xffff; */
++/* 	sub_minor = raw_fw_ver & 0xffff; */
+ 
+-	snprintf(attr->fw_ver, sizeof(attr->fw_ver), "%d.%d.%03d", major, minor,
+-		 sub_minor);
++/* 	snprintf(attr->fw_ver, sizeof(attr->fw_ver), "%d.%d.%03d", major, minor, */
++/* 		 sub_minor); */
+ 
+-	return 0;
+-}
++/* 	return 0; */
++/* } */
+ 
+ int xib_u_query_port(struct ibv_context *context, uint8_t port,
+ 			struct ibv_port_attr *attr)
+@@ -154,7 +154,7 @@ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 	pa = (uint64_t)(uintptr_t)addr;
+ #endif
+ 
+-	ret = ibv_cmd_reg_mr(pd, pa, length, (uintptr_t) addr, access, mr,
++	ret = ibv_cmd_reg_mr(pd, pa, length, hca_va, access, mr,
+ 				&cmd, sizeof(cmd), &resp, sizeof(resp));
+ 	if (ret) {
+ 		printf("ibv_cmd_reg_mr failed %d\n", ret);
+@@ -224,7 +224,7 @@ struct ibv_mr *xib_u_reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length
+ 	return mr;
+ }
+ 
+-int xib_u_rereg_mr(struct ibv_mr *mr, int flags, struct ibv_pd *pd,
++int xib_u_rereg_mr(struct verbs_mr *mr, int flags, struct ibv_pd *pd,
+ 			void *addr, size_t length, int access)
+ {
+ 	struct ibv_rereg_mr cmd;
+@@ -239,7 +239,7 @@ int xib_u_rereg_mr(struct ibv_mr *mr, int flags, struct ibv_pd *pd,
+ }
+ 
+ 
+-int xib_u_dereg_mr(struct ibv_mr *mr)
++int xib_u_dereg_mr(struct verbs_mr *mr)
+ {
+ 	int ret;
+ 
+@@ -786,7 +786,7 @@ int xib_u_post_send(struct ibv_qp *ibvqp, struct ibv_send_wr *wr,
+ 					return -ENOMEM;
+ 				temp = temp->next;
+ 			}
+-			temp->wr_id = wr->wr_id; 
++			temp->wr_id = wr->wr_id;
+ 			temp->next = NULL;
+ 			wr = wr->next;
+ 			qp->sq.sqd_length++;
+@@ -795,10 +795,10 @@ int xib_u_post_send(struct ibv_qp *ibvqp, struct ibv_send_wr *wr,
+                         printf("%s: Number of work requests in SQD exceeded maximum limit \n", __func__);
+                         return -ENOMEM;
+                 }
+-		
++
+ 	} else {
+ 		while(wr) {
+-			xwqe = (volatile struct xrnic_wr *)(qp->sq.sq_ba_v + 
++			xwqe = (volatile struct xrnic_wr *)(qp->sq.sq_ba_v +
+ 	 	       	qp->sq.sq_cmpl_db_local	* sizeof(*xwqe));
+ 
+ 	 	       xwqe->wrid = (wr->wr_id) & XRNIC_WR_ID_MASK;
+@@ -844,7 +844,7 @@ int xib_u_post_send(struct ibv_qp *ibvqp, struct ibv_send_wr *wr,
+ 	 	       				wr->sg_list[0].length, XRNIC_MAX_SDATA);
+ 	 	       			pthread_spin_unlock(&qp->sq.lock);
+ 	 	       			return -EINVAL;
+-	 	       		}			
++	 	       		}
+ 	 	       	}
+ 	 	       } else {
+ 	 	       	ret = xib_umem_get_phy_addr(ibvqp->context, wr->sg_list[0].lkey,
+@@ -901,7 +901,7 @@ int xib_u_post_send(struct ibv_qp *ibvqp, struct ibv_send_wr *wr,
+ 	 	       xwqe->imm_data = be32toh(wr->imm_data);
+ 	 	       xib_u_send_wr(qp, context, xwqe);
+ 	 	       wr = wr->next;
+-		}	
++		}
+ 	}
+ 	pthread_spin_unlock(&qp->sq.lock);
+ 	return 0;
+diff --git a/util/udma_barrier.h b/util/udma_barrier.h
+old mode 100755
+new mode 100644

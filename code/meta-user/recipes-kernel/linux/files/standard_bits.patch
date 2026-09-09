@@ -1,0 +1,22 @@
+diff --git a/include/rdma/ib_verbs.h b/include/rdma/ib_verbs.h
+index 3bc544245d9b..6c8a3abde728 100755
+--- a/include/rdma/ib_verbs.h
++++ b/include/rdma/ib_verbs.h
+@@ -1266,7 +1266,7 @@ enum ib_qp_attr_mask {
+ 	IB_ENABLE_QP_HW_ACCL		= (1<<28),
+ #endif
+ 
+-	IB_QP_ATTR_STANDARD_BITS = GENMASK(20, 0),
++	IB_QP_ATTR_STANDARD_BITS = GENMASK(28, 0),
+ };
+ 
+ enum ib_qp_state {
+@@ -1323,7 +1323,7 @@ struct ib_qp_attr {
+ 		int		nvmf_rhost;
+ 		/* Rx packets to be processed */
+ 		int		rx_pkt_pending;
+-		
++
+ 	};
+ 	dma_addr_t              rq_ba_p;
+ 	dma_addr_t              sq_ba_p;

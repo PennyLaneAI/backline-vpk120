@@ -1,0 +1,23 @@
+diff --git a/drivers/infiniband/core/uverbs_cmd.c b/drivers/infiniband/core/uverbs_cmd.c
+index dbff779aa8f4..fc7788cca914 100755
+--- a/drivers/infiniband/core/uverbs_cmd.c
++++ b/drivers/infiniband/core/uverbs_cmd.c
+@@ -709,14 +709,14 @@ static int ib_uverbs_reg_mr_ex(struct uverbs_attr_bundle *attrs)
+ 	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK))
+ 		return -EINVAL;
+ 
+-	ret = ib_check_mr_access(ib_dev, cmd.access_flags);
+-	if (ret)
+-		return ret;
+-
+ 	uobj = uobj_alloc(UVERBS_OBJECT_MR, attrs, &ib_dev);
+ 	if (IS_ERR(uobj))
+ 		return PTR_ERR(uobj);
+ 
++	ret = ib_check_mr_access(ib_dev, cmd.access_flags);
++	if (ret)
++		return ret;
++
+ 	pd = uobj_get_obj_read(pd, UVERBS_OBJECT_PD, cmd.pd_handle, attrs);
+ 	if (!pd) {
+ 		ret = -EINVAL;

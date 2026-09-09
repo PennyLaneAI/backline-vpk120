@@ -1,0 +1,29 @@
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index 57c0448d017a..893486f5522d 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -970,6 +970,9 @@ config HAVE_SMP
+ 	  The only effect of this option is to make the SMP-related
+ 	  options available to the user for configuration.
+ 
++config ARCH_ENABLE_MEMORY_HOTREMOVE
++	def_bool y
++
+ config SMP
+ 	bool "Symmetric Multi-Processing"
+ 	depends on CPU_V6K || CPU_V7
+diff --git a/mm/Kconfig b/mm/Kconfig
+index 264a2df5ecf5..9f5a71145f1e 100644
+--- a/mm/Kconfig
++++ b/mm/Kconfig
+@@ -707,6 +707,10 @@ config CONTIG_ALLOC
+ config PHYS_ADDR_T_64BIT
+ 	def_bool 64BIT
+ 
++config ARCH_MEMORY_PROBE
++	def_bool y
++	depends on MEMORY_HOTPLUG
++
+ config BOUNCE
+ 	bool "Enable bounce buffers"
+ 	default y

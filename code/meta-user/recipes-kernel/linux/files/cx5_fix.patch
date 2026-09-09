@@ -1,0 +1,13 @@
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet.h b/drivers/net/ethernet/xilinx/xilinx_axienet.h
+index 834b05beaafe..e8a8dbccc839 100644
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet.h
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet.h
+@@ -682,7 +682,7 @@
+ #define DCMAC_P_SPEED_100G_MASK		~(BIT(0) | BIT(1))
+ #define DCMAC_P_SPEED_200G_MASK	BIT(1)
+ #define DCMAC_P_SPEED_400G_MASK	BIT(2)
+-#define DCMAC_CH_TXMD_PM_TICK_INTERNAL_MASK	BIT(4)
++#define DCMAC_CH_TXMD_PM_TICK_INTERNAL_MASK	(BIT(4)| BIT(16) |BIT(18) |BIT(22))
+ #define DCMAC_CH_RXMD_PM_TICK_INTERNAL_MASK	BIT(11)
+ #define DCMAC_CH_MD_FEC_KR4		(BIT(16) | BIT(18))
+ #define DCMAC_CH_MD_FEC_200G		BIT(19)

@@ -1,0 +1,107 @@
+diff --git a/lib/sw_apps/mba_fs_boot/src/fs-boot.c b/lib/sw_apps/mba_fs_boot/src/fs-boot.c
+old mode 100644
+new mode 100755
+index e2b4b19f71..d0cf6a67a1
+--- a/lib/sw_apps/mba_fs_boot/src/fs-boot.c
++++ b/lib/sw_apps/mba_fs_boot/src/fs-boot.c
+@@ -29,6 +29,77 @@
+ #include "fs-xspi.h"
+ #endif
+ 
++#include "elf.h"
++
++#define KERNEL_IMAGE_START 0x24008000
++#define READ_BUFFER_SIZE 50 
++#define READ_BUFFER_SIZE_BYTES  50*4
++
++int copy_boot_kernel_elf(void)
++{
++
++	static char *mem = (char *) (KERNEL_IMAGE_START);
++
++	Elf32_Ehdr *elf;        //elf file header
++	Elf32_Phdr *elf_phdr;   /* program segment header */
++	unsigned long e_entry,
++		      e_phoff,  //program head offset (at file)
++		      e_phnum;  //phdr number
++
++	int i;
++	u32 ReadBuffer[READ_BUFFER_SIZE];
++	fsprint("\r\nXilinx (C) 2021.1 ...\r\n");
++	debug_fsprint_integer("Kernel start address = ", "\r\n", mem);
++	while(1)
++	{
++		memset(ReadBuffer,0,READ_BUFFER_SIZE_BYTES);
++		memcpy((void *)(ReadBuffer), (void*)(mem), sizeof(Elf32_Ehdr));
++		elf = (Elf32_Ehdr *) ReadBuffer;
++
++		if (elf->e_ident[0] !=0x7f ||
++			elf->e_ident[1] !='E' ||
++			elf->e_ident[2] !='L' ||
++			elf->e_ident[3] !='F' )
++		{
++			fsprint("not an ELF file\n\r");
++			break;
++		}
++		if (elf->e_type != ET_EXEC) {
++			fsprint("not an ELF executable\n\r");
++			continue;
++		}
++
++		e_entry = elf->e_entry;
++		e_phnum = elf->e_phnum;
++		e_phoff = elf->e_phoff;
++
++		debug_fsprint_integer("phnum = ", "\r\n", e_phnum);
++		debug_fsprint_integer("phoff = ", "\r\n", e_phoff);
++		debug_fsprint_integer("e_entry = ", "\r\n", e_entry);
++		debug_fsprint_integer("\r\nCopying Kernel Image to DDR ", "...\r\n", e_entry);
++		for (i = 0; i < e_phnum; ++i)
++		{
++			memset(ReadBuffer,0,READ_BUFFER_SIZE_BYTES);
++			memcpy((void *)(ReadBuffer), (void*)(e_phoff+mem), sizeof(Elf32_Phdr)+4);
++			elf_phdr = (Elf32_Phdr *) (ReadBuffer);
++
++			e_phoff += sizeof(*elf_phdr);
++			if (elf_phdr->p_type != PT_LOAD)
++				continue;
++
++			memcpy((void *)(elf_phdr->p_paddr), (void*)(elf_phdr->p_offset+mem), elf_phdr->p_filesz);
++
++			memset((char*)(elf_phdr->p_paddr+elf_phdr->p_filesz), 0, elf_phdr->p_memsz - elf_phdr->p_filesz);
++		}
++
++		fsprint("\r\nStarting kernel...\r\n");
++
++		void (*boot)();
++		boot=(void*)e_entry;
++		boot();
++	}
++}
++
+ /* Stubbed out version of this _exit hook, reduce code size significantly */
+ void __call_exitprocs(void)
+ {
+@@ -423,6 +494,7 @@ int main()
+ #endif
+ 	);
+ 
++	copy_boot_kernel_elf();
+ #ifndef CONFIG_NO_FLASH
+ 	/* Set the default bootloader boot parameters */
+ 	image_addrflash = CONFIG_FS_BOOT_START;
+diff --git a/lib/sw_apps/mba_fs_boot/src/fs-boot.h b/lib/sw_apps/mba_fs_boot/src/fs-boot.h
+old mode 100644
+new mode 100755
+index 6a32771a4d..be312adc6e
+--- a/lib/sw_apps/mba_fs_boot/src/fs-boot.h
++++ b/lib/sw_apps/mba_fs_boot/src/fs-boot.h
+@@ -71,7 +71,7 @@ void __fs_bad_image(unsigned int reason) __attribute__((weak));
+ 
+ 
+ /*! Debug flag to turn on debug messages */
+-//#define DEBUG
++#define DEBUG
+ 
+ /* enable SREC functionality for system without flash */
+ #ifndef XPAR_XSPI_NUM_INSTANCES /* without SPI flash */

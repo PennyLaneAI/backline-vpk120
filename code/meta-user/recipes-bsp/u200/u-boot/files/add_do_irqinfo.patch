@@ -1,0 +1,17 @@
+diff --git a/arch/microblaze/cpu/interrupts.c b/arch/microblaze/cpu/interrupts.c
+index 244f7fd15e..159bfb1500 100644
+--- a/arch/microblaze/cpu/interrupts.c
++++ b/arch/microblaze/cpu/interrupts.c
+@@ -35,3 +35,12 @@ void interrupt_handler(void)
+ {
+ 	panic("Interrupt occurred\n");
+ }
++
++//#if defined(CONFIG_CMD_IRQ)
++/* irqinfo - print information about devices, not implemented. */
++int do_irqinfo(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++	return 0;
++}
++//#endif
++

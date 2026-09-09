@@ -1,0 +1,13 @@
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+index 161bf4277cf4..d788eada28a4 100644
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+@@ -545,7 +545,7 @@ static inline int axienet_mrmac_100g_gt_reset(struct net_device *ndev)
+ 			netdev_err(ndev, "MRMAC PLL lock not complete! Cross-check the MAC ref clock configuration\n");
+ 			return -ENODEV;
+ 		}
+-		mrmac_pll_rst = 1;
++		//mrmac_pll_rst = 1; /* force pll every time for vpk120*/
+ 		netdev_info(ndev, "MRMAC 100G GT PLL LOCK complete\n");
+ 	}
+ 	return 0;

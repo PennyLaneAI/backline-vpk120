@@ -1,0 +1,14 @@
+diff --git a/src/get_clock.h b/src/get_clock.h
+index dacbcd0..3b28c04 100755
+--- a/src/get_clock.h
++++ b/src/get_clock.h
+@@ -104,6 +104,9 @@ static inline cycles_t get_cycles()
+ 	asm volatile("mrs %0, cntvct_el0" : "=r" (cval));
+ 	return cval;
+ }
++#elif defined(__MICROBLAZEEL__)
++typedef unsigned long cycles_t;
++#define get_cycles() (0)
+ 
+ #else
+ #warning get_cycles not implemented for this architecture: attempt asm/timex.h

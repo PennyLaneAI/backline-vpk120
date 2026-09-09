@@ -1,0 +1,17 @@
+diff --git a/src/perftest_parameters.c b/src/perftest_parameters.c
+--- a/src/perftest_parameters.c
++++ b/src/perftest_parameters.c
+@@ -1537,10 +1537,10 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
+ 					  size_factor = 1024*1024;
+ 				  }
+ 				  user_param->size = (uint64_t)strtol(optarg, NULL, 0) * size_factor;
+-				  if (user_param->size < 1 || user_param->size > (UINT_MAX / 2)) {
+-					  fprintf(stderr," Message Size should be between %d and %d\n",1,UINT_MAX/2);
++				  if (user_param->size < 1 || user_param->size > getpagesize()) {
++					  fprintf(stderr," Message Size should be between %d and %d\n",1,getpagesize());
+ 					  return 1;
+-				  }	
++				  } 
+ 				  break;
+ 			case 'e': user_param->use_event = ON;
+ 				  if (user_param->verb == WRITE) {

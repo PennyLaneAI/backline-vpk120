@@ -1,0 +1,321 @@
+From 3452ce1d8605b039b4a9e20b710230d34cdfc5e1 Mon Sep 17 00:00:00 2001
+From: dhruv28varshney <dhruvv@xilinx.com>
+Date: Tue, 8 Feb 2022 11:12:03 +0530
+Subject: [PATCH] rc_pingpong_for_ERNIC
+
+Signed-off-by: dhruv28varshney <dhruvv@xilinx.com>
+---
+ libibverbs/examples/CMakeLists.txt |   3 +-
+ libibverbs/examples/rc_pingpong.c  | 112 ++++++++++++++++++++++++-------------
+ 2 files changed, 76 insertions(+), 39 deletions(-)
+
+diff --git a/libibverbs/examples/CMakeLists.txt b/libibverbs/examples/CMakeLists.txt
+index dc4c497..99af700 100644
+--- a/libibverbs/examples/CMakeLists.txt
++++ b/libibverbs/examples/CMakeLists.txt
+@@ -1,4 +1,5 @@
+ # Shared example files
++# add umm in link_libraries for rc_pingpong: to run it for ERNIC
+ add_library(ibverbs_tools STATIC
+   pingpong.c
+   )
+@@ -13,7 +14,7 @@ rdma_executable(ibv_devinfo devinfo.c)
+ target_link_libraries(ibv_devinfo LINK_PRIVATE ibverbs)
+ 
+ rdma_executable(ibv_rc_pingpong rc_pingpong.c)
+-target_link_libraries(ibv_rc_pingpong LINK_PRIVATE ibverbs ibverbs_tools)
++target_link_libraries(ibv_rc_pingpong LINK_PRIVATE ibverbs ibverbs_tools umm)
+ 
+ rdma_executable(ibv_srq_pingpong srq_pingpong.c)
+ target_link_libraries(ibv_srq_pingpong LINK_PRIVATE ibverbs ibverbs_tools)
+diff --git a/libibverbs/examples/rc_pingpong.c b/libibverbs/examples/rc_pingpong.c
+index 9781c4f..50d8d05 100644
+--- a/libibverbs/examples/rc_pingpong.c
++++ b/libibverbs/examples/rc_pingpong.c
+@@ -31,7 +31,6 @@
+  */
+ #define _GNU_SOURCE
+ #include <config.h>
+-
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+@@ -42,12 +41,14 @@
+ #include <netdb.h>
+ #include <malloc.h>
+ #include <getopt.h>
++#include <umm_export.h>
++#include <libgen.h>
++#include <rdma/rdma_verbs.h>
+ #include <arpa/inet.h>
+ #include <time.h>
+ #include <inttypes.h>
+-
++#include "umm_export.h"
+ #include "pingpong.h"
+-
+ #include <ccan/minmax.h>
+ 
+ enum {
+@@ -55,6 +56,8 @@ enum {
+ 	PINGPONG_SEND_WRID = 2,
+ };
+ 
++int        rcnt;
++int        scnt;
+ static int page_size;
+ static int use_odp;
+ static int implicit_odp;
+@@ -83,6 +86,7 @@ struct pingpong_context {
+ 	int			 pending;
+ 	struct ibv_port_attr     portinfo;
+ 	uint64_t		 completion_timestamp_mask;
++        uint64_t buf_chunk_id;
+ };
+ 
+ static struct ibv_cq *pp_cq(struct pingpong_context *ctx)
+@@ -90,7 +94,6 @@ static struct ibv_cq *pp_cq(struct pingpong_context *ctx)
+ 	return use_ts ? ibv_cq_ex_to_cq(ctx->cq_s.cq_ex) :
+ 		ctx->cq_s.cq;
+ }
+-
+ struct pingpong_dest {
+ 	int lid;
+ 	int qpn;
+@@ -98,6 +101,15 @@ struct pingpong_dest {
+ 	union ibv_gid gid;
+ };
+ 
++void free_umm_buf(struct pingpong_context *ctx)
++{
++	int ret;
++	return;
++	ret = xib_umem_free_mem(ctx, ctx->buf_chunk_id,
++			(uint64_t)ctx->buf, ctx->size);
++	ret = xib_umem_free_chunk(ctx, ctx->buf_chunk_id);
++}
++
+ static int pp_connect_ctx(struct pingpong_context *ctx, int port, int my_psn,
+ 			  enum ibv_mtu mtu, int sl,
+ 			  struct pingpong_dest *dest, int sgid_idx)
+@@ -118,12 +130,10 @@ static int pp_connect_ctx(struct pingpong_context *ctx, int port, int my_psn,
+ 		}
+ 	};
+ 
+-	if (dest->gid.global.interface_id) {
+-		attr.ah_attr.is_global = 1;
+-		attr.ah_attr.grh.hop_limit = 1;
+-		attr.ah_attr.grh.dgid = dest->gid;
+-		attr.ah_attr.grh.sgid_index = sgid_idx;
+-	}
++	attr.ah_attr.is_global = 1;	
++	attr.ah_attr.grh.hop_limit = 1;
++	attr.ah_attr.grh.dgid = dest->gid;
++	attr.ah_attr.grh.sgid_index = sgid_idx;
+ 	if (ibv_modify_qp(ctx->qp, &attr,
+ 			  IBV_QP_STATE              |
+ 			  IBV_QP_AV                 |
+@@ -344,22 +354,43 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, int size,
+ 	ctx->send_flags = IBV_SEND_SIGNALED;
+ 	ctx->rx_depth   = rx_depth;
+ 
+-	ctx->buf = memalign(page_size, size);
+-	if (!ctx->buf) {
+-		fprintf(stderr, "Couldn't allocate work buf.\n");
+-		goto clean_ctx;
+-	}
+-
+-	/* FIXME memset(ctx->buf, 0, size); */
+-	memset(ctx->buf, 0x7b, size);
++        /*code to allocate mem and chunk_id to buffer*/     
++        uint64_t va;
++        int ret1=0;	
++        bool proc_access = true;
++        uint64_t data_size = size, chunk_id;
+ 
+ 	ctx->context = ibv_open_device(ib_dev);
+ 	if (!ctx->context) {
+ 		fprintf(stderr, "Couldn't get context for %s\n",
+-			ibv_get_device_name(ib_dev));
++		ibv_get_device_name(ib_dev));
+ 		goto clean_buffer;
+ 	}
+ 
++	chunk_id = xib_umem_alloc_chunk(ctx,
++			XMEM_PL_DDR, data_size, data_size,
++			proc_access);
++
++	if (chunk_id <= 0) {
++		printf("Failed to alloc chunk %d\n", __LINE__);
++        }
++
++	ctx->buf_chunk_id = chunk_id;
++
++        va = xib_umem_alloc_mem(ctx, chunk_id, data_size);
++        if (XMEM_IS_INVALID_VADDR(va)) {
++    		printf("Failed to alloc memory from chunk\n");
++		ret1 |= xib_umem_free_chunk(ctx, ctx->buf_chunk_id);
++		ctx->buf_chunk_id = -EINVAL;
++        }
++	ctx->buf = (char *)va;
++        /*end of part added to fix ibv_reg_mr issue*/
++
++	if (!ctx->buf) {
++		fprintf(stderr, "Couldn't allocate work buf.\n");
++		goto clean_ctx;
++	}
++
+ 	if (use_event) {
+ 		ctx->channel = ibv_create_comp_channel(ctx->context);
+ 		if (!ctx->channel) {
+@@ -434,9 +465,12 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, int size,
+ 	if (implicit_odp) {
+ 		ctx->mr = ibv_reg_mr(ctx->pd, NULL, SIZE_MAX, access_flags);
+ 	} else {
+-		ctx->mr = use_dm ? ibv_reg_dm_mr(ctx->pd, ctx->dm, 0,
+-						 size, access_flags) :
+-			ibv_reg_mr(ctx->pd, ctx->buf, size, access_flags);
++		if(use_dm){
++                	ctx->mr = ibv_reg_dm_mr(ctx->pd, ctx->dm, 0,
++						 size, access_flags); 
++                } else {
++		  	ctx->mr= ibv_reg_mr(ctx->pd, ctx->buf, size, access_flags);
++                }
+ 	}
+ 
+ 	if (!ctx->mr) {
+@@ -448,7 +482,7 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, int size,
+ 		struct ibv_sge sg_list;
+ 		int ret;
+ 
+-		sg_list.lkey = ctx->mr->lkey;
++		sg_list.lkey = ctx->buf_chunk_id;
+ 		sg_list.addr = (uintptr_t)ctx->buf;
+ 		sg_list.length = size;
+ 
+@@ -486,10 +520,10 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, int size,
+ 			.send_cq = pp_cq(ctx),
+ 			.recv_cq = pp_cq(ctx),
+ 			.cap     = {
+-				.max_send_wr  = 1,
++				.max_send_wr  = 16,
+ 				.max_recv_wr  = rx_depth,
+ 				.max_send_sge = 1,
+-				.max_recv_sge = 1
++				.max_recv_sge = (ctx->size / 256) * 2,
+ 			},
+ 			.qp_type = IBV_QPT_RC
+ 		};
+@@ -572,7 +606,7 @@ clean_device:
+ 	ibv_close_device(ctx->context);
+ 
+ clean_buffer:
+-	free(ctx->buf);
++	free_umm_buf(ctx->buf);
+ 
+ clean_ctx:
+ 	free(ctx);
+@@ -621,7 +655,7 @@ static int pp_close_ctx(struct pingpong_context *ctx)
+ 		return 1;
+ 	}
+ 
+-	free(ctx->buf);
++	free_umm_buf(ctx->buf);
+ 	free(ctx);
+ 
+ 	return 0;
+@@ -689,8 +723,7 @@ struct ts_params {
+ 	unsigned int		 comp_with_time_iters;
+ };
+ 
+-static inline int parse_single_wc(struct pingpong_context *ctx, int *scnt,
+-				  int *rcnt, int *routs, int iters,
++static inline int parse_single_wc(struct pingpong_context *ctx, int *routs, int iters,
+ 				  uint64_t wr_id, enum ibv_wc_status status,
+ 				  uint64_t completion_timestamp,
+ 				  struct ts_params *ts)
+@@ -704,7 +737,7 @@ static inline int parse_single_wc(struct pingpong_context *ctx, int *scnt,
+ 
+ 	switch ((int)wr_id) {
+ 	case PINGPONG_SEND_WRID:
+-		++(*scnt);
++		scnt++;
+ 		break;
+ 
+ 	case PINGPONG_RECV_WRID:
+@@ -718,7 +751,7 @@ static inline int parse_single_wc(struct pingpong_context *ctx, int *scnt,
+ 			}
+ 		}
+ 
+-		++(*rcnt);
++		rcnt++;
+ 		if (use_ts) {
+ 			if (ts->last_comp_with_ts) {
+ 				uint64_t delta;
+@@ -751,7 +784,7 @@ static inline int parse_single_wc(struct pingpong_context *ctx, int *scnt,
+ 	}
+ 
+ 	ctx->pending &= ~(int)wr_id;
+-	if (*scnt < iters && !ctx->pending) {
++	if (scnt < iters && !ctx->pending) {
+ 		if (pp_post_send(ctx)) {
+ 			fprintf(stderr, "Couldn't post send\n");
+ 			return 1;
+@@ -803,11 +836,10 @@ int main(int argc, char *argv[])
+ 	int                      ib_port = 1;
+ 	unsigned int             size = 4096;
+ 	enum ibv_mtu		 mtu = IBV_MTU_1024;
+-	unsigned int             rx_depth = 500;
++	unsigned int             rx_depth = 512;
+ 	unsigned int             iters = 1000;
+ 	int                      use_event = 0;
+ 	int                      routs;
+-	int                      rcnt, scnt;
+ 	int                      num_cq_events = 0;
+ 	int                      sl = 0;
+ 	int			 gidx = -1;
+@@ -1069,10 +1101,11 @@ int main(int argc, char *argv[])
+ 		return 1;
+ 	}
+ 
+-	rcnt = scnt = 0;
++	rcnt = 0;
++	scnt = 0;
+ 	while (rcnt < iters || scnt < iters) {
+ 		int ret;
+-
++#if 0
+ 		if (use_event) {
+ 			struct ibv_cq *ev_cq;
+ 			void          *ev_ctx;
+@@ -1129,7 +1162,9 @@ int main(int argc, char *argv[])
+ 				fprintf(stderr, "poll CQ failed %d\n", ret);
+ 				return ret;
+ 			}
+-		} else {
++		} else
++#else
++		{
+ 			int ne, i;
+ 			struct ibv_wc wc[2];
+ 
+@@ -1142,7 +1177,7 @@ int main(int argc, char *argv[])
+ 			} while (!use_event && ne < 1);
+ 
+ 			for (i = 0; i < ne; ++i) {
+-				ret = parse_single_wc(ctx, &scnt, &rcnt, &routs,
++				ret = parse_single_wc(ctx, &routs,
+ 						      iters,
+ 						      wc[i].wr_id,
+ 						      wc[i].status,
+@@ -1153,6 +1188,7 @@ int main(int argc, char *argv[])
+ 				}
+ 			}
+ 		}
++#endif
+ 	}
+ 
+ 	if (gettimeofday(&end, NULL)) {
+-- 
+1.8.3.1
+

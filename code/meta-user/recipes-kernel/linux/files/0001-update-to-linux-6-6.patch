@@ -1,0 +1,94 @@
+diff --git a/drivers/infiniband/core/uverbs_cmd.c b/drivers/infiniband/core/uverbs_cmd.c
+index 3b8f189b2f93..b0ede126e463 100755
+--- a/drivers/infiniband/core/uverbs_cmd.c
++++ b/drivers/infiniband/core/uverbs_cmd.c
+@@ -709,28 +709,29 @@ static int ib_uverbs_reg_mr_ex(struct uverbs_attr_bundle *attrs)
+ 	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK))
+ 		return -EINVAL;
+ 
+-	ret = ib_check_mr_access(cmd.access_flags);
+-	if (ret)
+-		return ret;
+-
+ 	uobj = uobj_alloc(UVERBS_OBJECT_MR, attrs, &ib_dev);
+ 	if (IS_ERR(uobj))
+ 		return PTR_ERR(uobj);
+ 
++	ret = ib_check_mr_access(cmd.access_flags);
++	if (ret)
++		return ret;
++
+ 	pd = uobj_get_obj_read(pd, UVERBS_OBJECT_PD, cmd.pd_handle, attrs);
+ 	if (!pd) {
+ 		ret = -EINVAL;
+ 		goto err_free;
+ 	}
+ 
+-	if (cmd.access_flags & IB_ACCESS_ON_DEMAND) {
+-		if (!(pd->device->attrs.device_cap_flags &
+-		      IB_DEVICE_ON_DEMAND_PAGING)) {
+-			pr_debug("ODP support not available\n");
+-			ret = -EINVAL;
+-			goto err_put;
+-		}
+-	}
++	// IB_DEVICE_ON_DEMAND_PAGING is deprecated in 6.6
++	//if (cmd.access_flags & IB_ACCESS_ON_DEMAND) {
++	//	if (!(pd->device->attrs.device_cap_flags &
++	//	      IB_DEVICE_ON_DEMAND_PAGING)) {
++	//		pr_debug("ODP support not available\n");
++	//		ret = -EINVAL;
++	//		goto err_put;
++	//	}
++	//}
+ 
+ 	mr = pd->device->ops.reg_user_mr_ex(pd, cmd.start, cmd.length, cmd.hca_va,
+ 					 cmd.access_flags,
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+index 37ef4c6b09de..740a3d664463 100755
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+@@ -479,7 +479,7 @@ static void xxvenet_setoptions(struct net_device *ndev, u32 options)
+ 
+ static inline void axienet_mrmac_100g_reset(struct axienet_local *lp)
+ {
+-	u32 val, reg;
++	u32 reg;
+ 
+ 	axienet_iow(lp, MRMAC_RESET_OFFSET, MRMAC_STS_ALL_MASK);
+ 	mdelay(MRMAC_RESET_DELAY);
+@@ -995,7 +995,7 @@ static int axienet_device_reset(struct net_device *ndev)
+ 		axienet_mrmac_reset(lp);
+ 
+ 		if (axienet_mrmac_gt_reset(ndev))
+-			return;
++			return 0;
+ 	}
+ 
+ 
+@@ -1006,7 +1006,7 @@ static int axienet_device_reset(struct net_device *ndev)
+ 		axienet_mrmac_100g_reset(lp);
+ 
+ 		if (axienet_mrmac_100g_gt_reset(ndev))
+-			return;
++			return 0;
+ 	}
+ 
+ 	if (lp->axienet_config->gt_reset) {
+@@ -1698,7 +1698,7 @@ static int axienet_queue_xmit(struct sk_buff *skb,
+ 	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+ 	    lp->axienet_config->mactype == XAXIENET_MRMAC ||
+ 	    lp->axienet_config->mactype == XAXIENET_100G ||
+-	    lp->axienet_config->mactype == XAXIENET_MRMAC_100G) ||
++	    lp->axienet_config->mactype == XAXIENET_MRMAC_100G ||
+ 	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G ||
+ 	    lp->axienet_config->mactype == XAXIENET_MRMAC ||
+ 	    lp->axienet_config->mactype == XAXIENET_DCMAC) {
+@@ -2515,6 +2515,7 @@ static int axienet_open(struct net_device *ndev)
+ 			lp->gpio_irq = 0;
+ 			goto err_eth_irq;
+ 		}
++	}
+ 
+ 
+ 	/* If Runtime speed switching supported */

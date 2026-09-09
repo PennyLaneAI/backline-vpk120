@@ -1,0 +1,47 @@
+diff --git a/src/send_bw.c b/src/send_bw.c
+index 11e680d..70e774f 100755
+--- a/src/send_bw.c
++++ b/src/send_bw.c
+@@ -384,6 +384,42 @@ int main(int argc, char *argv[])
+ 		printf((user_param.cpu_util_data.enable ? RESULT_EXT_CPU_UTIL : RESULT_EXT));
+ 	}
+ 
++	/* For half duplex tests, server just waits for client to exit */
++	if (user_param.machine == SERVER && !user_param.duplex) {
++
++		if (ctx_hand_shake(&user_comm,&my_dest[0],&rem_dest[0])) {
++			fprintf(stderr," Failed to exchange data between server and clients\n");
++			return FAILURE;
++		}
++
++		xchg_bw_reports(&user_comm, &my_bw_rep,&rem_bw_rep,atof(user_param.rem_version));
++		print_full_bw_report(&user_param, &rem_bw_rep, NULL);
++
++		if (ctx_close_connection(&user_comm,&my_dest[0],&rem_dest[0])) {
++			fprintf(stderr,"Failed to close connection between server and client\n");
++			return 1;
++		}
++                usleep(3000);
++
++		if (user_param.output == FULL_VERBOSITY) {
++			if (user_param.report_per_port)
++				printf(RESULT_LINE_PER_PORT);
++			else
++				printf(RESULT_LINE);
++		}
++
++		if (user_param.work_rdma_cm == ON) {
++			if (destroy_ctx(&ctx,&user_param)) {
++				fprintf(stderr, "Failed to destroy resources\n");
++				return 1;
++			}
++			user_comm.rdma_params->work_rdma_cm = ON;
++			return destroy_ctx(user_comm.rdma_ctx,user_comm.rdma_params);
++		}
++
++		return destroy_ctx(&ctx,&user_param);
++	}
++
+ 	if (user_param.test_method == RUN_ALL) {
+ 
+ 		if (user_param.connection_type == UD)

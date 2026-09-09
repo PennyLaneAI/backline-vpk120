@@ -1,0 +1,179 @@
+From f27b178565af6df97103f4ce1d57c20096e87361 Mon Sep 17 00:00:00 2001
+From: anjaneyu <anjaneyu@xilinx.com>
+Date: Thu, 5 Dec 2019 16:57:04 +0530
+Subject: [PATCH] debugging perftest
+
+Signed-off-by: anjaneyu <anjaneyu@xilinx.com>
+---
+ src/perftest_parameters.c |  3 +++
+ src/perftest_resources.c  | 28 +++++++++++++++++++++++++++-
+ 2 files changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/src/perftest_parameters.c b/src/perftest_parameters.c
+index 66d4e19..c636eaa 100755
+--- a/src/perftest_parameters.c
++++ b/src/perftest_parameters.c
+@@ -2131,6 +2131,7 @@ void print_report_bw (struct perftest_parameters *user_param, struct bw_report_d
+ 		num_of_qps /= 2;
+ 
+ 	if (user_param->noPeak == OFF) {
++		printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 		/* Find the peak bandwidth unless asked not to in command line */
+ 		for (i = 0; i < user_param->iters * num_of_qps; ++i) {
+ 			for (j = i; j < user_param->iters * num_of_qps; ++j) {
+@@ -2144,7 +2145,9 @@ void print_report_bw (struct perftest_parameters *user_param, struct bw_report_d
+ 		}
+ 	}
+ 
++	printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 	cycles_to_units = get_cpu_mhz(user_param->cpu_freq_f) * 1000000;
++	printf("Anji cycles to units is %lld\n", cycles_to_units);
+ 	if ((cycles_to_units == 0 && !user_param->cpu_freq_f)) {
+ 		fprintf(stderr,"Can't produce a report\n");
+ 		exit(1);
+diff --git a/src/perftest_resources.c b/src/perftest_resources.c
+index 71a1541..3649616 100755
+--- a/src/perftest_resources.c
++++ b/src/perftest_resources.c
+@@ -2784,6 +2784,7 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 	ALLOCATE(wc ,struct ibv_wc ,CTX_POLL_BATCH);
+ 
+ 	if (user_param->test_type == DURATION) {
++		printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 		duration_param=user_param;
+ 		duration_param->state = START_STATE;
+ 		signal(SIGALRM, catch_alarm);
+@@ -2808,11 +2809,14 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 		goto cleaning;
+ 	}
+ 
+-	if (user_param->test_type == ITERATIONS && user_param->noPeak == ON)
++	if (user_param->test_type == ITERATIONS && user_param->noPeak == ON) {
+ 		user_param->tposted[0] = get_cycles();
++		printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
++	}
+ 
+ 	/* If using rate limiter, calculate gap time between bursts */
+ 	if (user_param->is_rate_limiting == 1) {
++		printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 		/* Calculate rate limit in pps */
+ 		switch (user_param->rate_units) {
+ 			case MEGA_BYTE_PS:
+@@ -2838,6 +2842,8 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 		gap_cycles = cpu_mhz * gap_time;
+ 	}
+ 
++        printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
++        printf("Anji total iterations [%lld] cq mod is [%d]\n", tot_iters, user_param->cq_mod);
+ 	/* main loop for posting */
+ 	while (totscnt < tot_iters  || totccnt < tot_iters ||
+ 		(user_param->test_type == DURATION && user_param->state != END_STATE) ) {
+@@ -2855,10 +2861,13 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 				burst_iter = 0;
+ 			}
+ 
++			printf("Anji scnt is %lld ccnt is %lld, tx depth is %d\n", ctx->scnt[index], ctx->ccnt[index], user_param->tx_depth);
+ 			while ((ctx->scnt[index] < user_param->iters || user_param->test_type == DURATION) && (ctx->scnt[index] - ctx->ccnt[index]) < (user_param->tx_depth) &&
+ 					!(user_param->is_rate_limiting && is_sending_burst == 0)) {
++				printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 				if (ctx->send_rcredit) {
+ 					uint32_t swindow = ctx->scnt[index] + user_param->post_list - ctx->credit_buf[index];
++					printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 					if (swindow >= user_param->rx_depth)
+ 						break;
+ 				}
+@@ -2875,7 +2884,10 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 							ctx->exp_wr[index].exp_send_flags &= ~IBV_EXP_SEND_SIGNALED;
+ 						else
+ 					#endif
++						{
++							printf("Anji send signalled is disabled\n");
+ 							ctx->wr[index].send_flags &= ~IBV_SEND_SIGNALED;
++						}
+ 					#ifdef HAVE_ACCL_VERBS
+ 					}
+ 					#endif
+@@ -2899,10 +2911,12 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 				} else {
+ 				#endif
+ 					if (user_param->use_exp == 1) {
++						printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 						err = (ctx->exp_post_send_func_pointer)(ctx->qp[index],
+ 							&ctx->exp_wr[index*user_param->post_list],&bad_exp_wr);
+ 					}
+ 					else {
++						printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 						err = (ctx->post_send_func_pointer)(ctx->qp[index],
+ 							&ctx->wr[index*user_param->post_list],&bad_wr);
+ 					}
+@@ -2910,6 +2924,7 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 				}
+ 				#endif
+ 				#else
++				printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 				err = ibv_post_send(ctx->qp[index],&ctx->wr[index*user_param->post_list],&bad_wr);
+ 				#endif
+ 				if (err) {
+@@ -2945,10 +2960,13 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 				ctx->scnt[index] += user_param->post_list;
+ 				totscnt += user_param->post_list;
+ 
++				printf("Anji port list [%d], ctx->scnt[%d] is [%d], test type is [%d] ITER_TEST TYPE is [%d]\n",
++                                                user_param->post_list, index, ctx->scnt[index], user_param->test_type, ITERATIONS);
+ 				/* ask for completion on this wr */
+ 				if (user_param->post_list == 1 &&
+ 						(ctx->scnt[index]%user_param->cq_mod == user_param->cq_mod - 1 ||
+ 							(user_param->test_type == ITERATIONS && ctx->scnt[index] == user_param->iters - 1))) {
++					printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 					#ifdef HAVE_VERBS_EXP
+ 					#ifdef HAVE_ACCL_VERBS
+ 					if (user_param->verb_type == ACCL_INTF)
+@@ -2967,6 +2985,7 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 
+ 				/* Check if a full burst was sent. */
+ 				if (user_param->is_rate_limiting == 1) {
++					printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 					burst_iter += user_param->post_list;
+ 					if (burst_iter >= user_param->burst_size) {
+ 						is_sending_burst = 0;
+@@ -2975,9 +2994,13 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 			}
+ 		}
+ 
++		printf("Anji totscnt [%d] totccnt[%d]\n", totscnt, totccnt);
+ 		if (totccnt < tot_iters || (user_param->test_type == DURATION &&  totccnt < totscnt)) {
++			printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 			if (user_param->use_event) {
++				printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 				if (ctx_notify_events(ctx->channel)) {
++					printf("Anji %s:%s:%d\n", __FILE__, __func__, __LINE__);
+ 					fprintf(stderr, "Couldn't request CQ notification\n");
+ 					return_value = 1;
+ 					goto cleaning;
+@@ -2992,6 +3015,7 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 				ne = ibv_poll_cq(ctx->send_cq,CTX_POLL_BATCH,wc);
+ 
+ 			if (ne > 0) {
++				printf("Anji [%d] acks rx\n", ne);
+ 				for (i = 0; i < ne; i++) {
+ 					wc_id = (user_param->verb_type == ACCL_INTF) ?
+ 						0 : (int)wc[i].wr_id;
+@@ -3005,6 +3029,7 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 					}
+ 
+ 					ctx->ccnt[wc_id] += user_param->cq_mod;
++					printf("Anji cq_mod [%d] ccnt is %d\n", user_param->cq_mod, ctx->ccnt[wc_id]);
+ 					totccnt += user_param->cq_mod;
+ 
+ 					if (user_param->noPeak == OFF) {
+@@ -3029,6 +3054,7 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 				goto cleaning;
+ 			}
+ 		}
++		printf("Anji totscnt [%d] totccnt[%d]\n", totscnt, totccnt);
+ 	}
+ 
+ 	if (user_param->noPeak == ON && user_param->test_type == ITERATIONS)
+-- 
+2.7.4
+

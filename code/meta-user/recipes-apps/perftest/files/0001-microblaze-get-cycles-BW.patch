@@ -1,0 +1,175 @@
+--- a/src/get_clock.c	2020-11-11 17:15:06.610093166 +0530
++++ b/src/get_clock.c	2020-11-11 17:10:41.918105504 +0530
+@@ -171,6 +171,8 @@
+ 		strncpy(s, "0x", strlen("0x"));
+ 		rc = sscanf(s, "%x", &val);
+ 		m = val/1000000;
++		#elif defined(__MICROBLAZEEL__)
++		rc = sscanf(buf, "CPU-MHz: %lf", &m);
+ 		#else
+ 		rc = sscanf(buf, "cpu MHz : %lf", &m);
+ 		#endif
+--- a/src/get_clock.h	2020-11-11 17:15:06.910093152 +0530
++++ b/src/get_clock.h	2020-11-11 17:10:41.918105504 +0530
+@@ -97,8 +97,34 @@
+ 	return cval;
+ }
+ #elif defined(__MICROBLAZEEL__)
+-typedef unsigned long cycles_t;
+-#define get_cycles() (0)
++#include<fcntl.h>
++
++typedef unsigned long long cycles_t;
++#define AXITIMER	"/dev/axitimer0"
++static inline cycles_t get_cycles()
++{
++	cycles_t cval = 0;
++	cycles_t val = 0;
++	int i;
++	char buf[8] = {0};
++	static int fd;
++	static int cnt=0;
++
++	if (!cnt) {
++		fd = open(AXITIMER, O_RDONLY);
++		if (fd < 0) {
++			printf("%s: Failed to open %s\n", __func__, AXITIMER);
++			return 0;
++		}
++		cnt++;
++	}
++	read(fd, &buf[0], sizeof(cycles_t));
++	for (i = 0; i < sizeof(cycles_t); i++) {
++		val = buf[i] & 0xFF;
++		cval |= val << (i * 8);
++	}
++	return cval;
++}
+ 
+ #else
+ #warning get_cycles not implemented for this architecture: attempt asm/timex.h
+--- a/src/perftest_communication.c	2020-11-11 17:15:07.086093144 +0530
++++ b/src/perftest_communication.c	2020-11-11 17:16:43.430088653 +0530
+@@ -1275,7 +1275,11 @@
+ 		return 1;
+ 	}
+ 
++#ifdef UMM_ALLOC
++	memcpy(data,comm->rdma_ctx->list.addr, size);
++#else
+ 	memcpy(data,comm->rdma_ctx->buf[0], size);
++#endif
+ 
+ 	if (post_one_recv_wqe(comm->rdma_ctx)) {
+ 		fprintf(stderr, "Couldn't post send \n");
+@@ -1383,10 +1387,10 @@
+ 	struct bw_report_data temp;
+ 	int size;
+ 
+-	temp.size = hton_long(my_bw_rep->size);
++	temp.size = hton_64(my_bw_rep->size);
+ 
+ 	if ( remote_version >= 5.33 )
+-		temp.iters = hton_long(my_bw_rep->iters);
++		temp.iters = hton_64(my_bw_rep->iters);
+ 	else
+ 		temp.iters = hton_int(my_bw_rep->iters);
+ 
+@@ -1399,7 +1403,7 @@
+ 	temp.msgRate_avg_p2 = hton_double(my_bw_rep->msgRate_avg_p2);
+ 
+ 	/*******************Exchange Reports*******************/
+-	if (ctx_xchg_data(comm, (void*) (&temp.size), (void*) (&rem_bw_rep->size), sizeof(unsigned long))) {
++	if (ctx_xchg_data(comm, (void*) (&temp.size), (void*) (&rem_bw_rep->size), sizeof(uint64_t))) {
+ 		fprintf(stderr," Failed to exchange data between server and clients\n");
+ 		exit(1);
+ 	}
+@@ -1443,10 +1447,10 @@
+ 		}
+ 	}
+ 
+-	rem_bw_rep->size = hton_long(rem_bw_rep->size);
++	rem_bw_rep->size = hton_64(rem_bw_rep->size);
+ 
+ 	if ( remote_version >= 5.33 )
+-		rem_bw_rep->iters = hton_long(rem_bw_rep->iters);
++		rem_bw_rep->iters = hton_64(rem_bw_rep->iters);
+ 	else
+ 		rem_bw_rep->iters = hton_int(rem_bw_rep->iters);
+ 
+--- a/src/perftest_parameters.c	2020-11-11 17:15:06.970093149 +0530
++++ b/src/perftest_parameters.c	2020-11-11 17:10:41.918105504 +0530
+@@ -2177,7 +2177,7 @@
+ 		memset(my_bw_rep, 0, sizeof(struct bw_report_data));
+ 	}
+ 
+-	my_bw_rep->size = (unsigned long)user_param->size;
++	my_bw_rep->size = user_param->size;
+ 	my_bw_rep->iters = user_param->iters;
+ 	my_bw_rep->bw_peak = (double)peak_up/peak_down;
+ 	my_bw_rep->bw_avg = bw_avg;
+@@ -2244,8 +2244,15 @@
+ 		printf( REPORT_FMT_QOS, my_bw_rep->size, my_bw_rep->sl, my_bw_rep->iters, bw_peak, bw_avg, msgRate_avg);
+ 	else if (user_param->report_per_port)
+ 		printf(REPORT_FMT_PER_PORT, my_bw_rep->size, my_bw_rep->iters, bw_peak, bw_avg, msgRate_avg, bw_avg_p1, msgRate_avg_p1, bw_avg_p2, msgRate_avg_p2);
+-	else
++	else {
++#if defined(__MICROBLAZEEL__)
++		printf( REPORT_FMT_a, my_bw_rep->size, my_bw_rep->iters);
++		printf( REPORT_FMT_b, bw_peak, bw_avg, msgRate_avg);
++		printf( REPORT_FMT_c, msgRate_avg);
++#else
+ 		printf( inc_accuracy ? REPORT_FMT_EXT : REPORT_FMT, my_bw_rep->size, my_bw_rep->iters, bw_peak, bw_avg, msgRate_avg);
++#endif
++	}
+ 	if (user_param->output == FULL_VERBOSITY)
+ 		printf( user_param->cpu_util_data.enable ? REPORT_EXT_CPU_UTIL : REPORT_EXT , calc_cpu_util(user_param));
+ }
+@@ -2325,7 +2332,7 @@
+ 	}
+ 	else {
+ 		printf(REPORT_FMT_LAT,
+-				(unsigned long)user_param->size,
++				user_param->size,
+ 				user_param->iters,
+ 				delta[0] / cycles_to_units / rtt_factor,
+ 				delta[user_param->iters - 2] / cycles_to_units / rtt_factor,
+--- a/src/perftest_parameters.h	2020-11-11 17:15:06.970093149 +0530
++++ b/src/perftest_parameters.h	2020-11-11 17:10:41.918105504 +0530
+@@ -187,6 +187,9 @@
+ 
+ /* Result print format */
+ #define REPORT_FMT     " %-7lu    %-10lu       %-7.2lf            %-7.2lf		   %-7.6lf"
++#define REPORT_FMT_a     " %-7llu    %-10llu       "
++#define REPORT_FMT_b     "%-7.2lf            %-7.2lf		   "
++#define REPORT_FMT_c     "%-7.6lf"
+ 
+ #define REPORT_FMT_EXT     " %-7lu    %lu           %-7.6lf            %-7.6lf            %-7.6lf"
+ 
+@@ -426,7 +429,7 @@
+ };
+ 
+ struct bw_report_data {
+-	unsigned long size;
++	uint64_t size;
+ 	uint64_t iters;
+ 	double bw_peak;
+ 	double bw_avg;
+--- a/src/perftest_resources.c	2020-11-11 17:15:07.086093144 +0530
++++ b/src/perftest_resources.c	2020-11-11 17:10:41.914105504 +0530
+@@ -1212,13 +1212,13 @@
+ 						ctx->buff_size, ctx->chunk_info.chunk_id);
+ 				return -ENOMEM;
+ 			}
+-			ctx->buf[qp_index] = (uintptr_t)vaddr;
++			ctx->buf[qp_index] = vaddr;
+ 
+ 			{
+ 				unsigned int i = 0;
+ 				unsigned char *buf = vaddr;
+ 				for (i = 0; i < ctx->buff_size; i++) {
+-					buf[i] = i;
++					buf[i] = 0;
+ 				}
+ 			}
+ 			/*BUS ERROR - while doing memset with umm allocated memory*/

@@ -1,0 +1,43 @@
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+index 077cd4749..39f20e861 100644
+--- a/providers/xib/xib_u_verbs.c
++++ b/providers/xib/xib_u_verbs.c
+@@ -127,7 +127,7 @@ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ {
+ 	int ret;
+ 	unsigned int id;
+-	struct ibv_mr *mr;
++	struct verbs_mr *mr;
+ 	struct ibv_reg_mr cmd;
+ 	struct ib_uverbs_reg_mr_resp resp;
+ 	uint64_t pa;
+@@ -142,7 +142,7 @@ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 		return NULL;
+ 	}
+ 
+-	mr = malloc(sizeof(struct ibv_mr));
++	mr = malloc(sizeof(struct verbs_mr));
+ 	if (!mr)
+ 		return NULL;
+ 
+@@ -150,7 +150,7 @@ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 
+ 	id = xib_umm_get_chunk_id(pd->context, (unsigned long)addr);
+ 	if (id != XMEM_INVALID_CHUNK_ID) {
+-		mr->lkey = id;
++		mr->ibv_mr.lkey = id;
+ 	} else {
+ 		printf("%s:%d couldn't find chunk id for the given address [%#lx]\n",
+ 				__func__, __LINE__, addr);
+@@ -175,9 +175,9 @@ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 		free(mr);
+ 		return NULL;
+ 	}
+-	mr->lkey = id;
++	mr->ibv_mr.lkey = id;
+ 
+-	return mr;
++	return &mr->ibv_mr;
+ }
+ 
+ struct ibv_mr *xib_u_reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length,

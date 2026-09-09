@@ -1,0 +1,38 @@
+diff --git a/providers/xib/xib_u.h b/providers/xib/xib_u.h
+index 97e82cd5d..fff7702c9 100755
+--- a/providers/xib/xib_u.h
++++ b/providers/xib/xib_u.h
+@@ -193,9 +193,9 @@ int xib_u_query_port(struct ibv_context *context, uint8_t port,
+ struct ibv_pd *xib_u_alloc_pd(struct ibv_context *context);
+ int xib_u_free_pd(struct ibv_pd *pd);
+ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+-				int access);
++				uint64_t hca_va, int access);
+ struct ibv_mr *xib_u_reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length,
+-				int access);
++				uint64_t hca_va, int access);
+ int xib_u_rereg_mr(struct ibv_mr *mr, int flags, struct ibv_pd *pd,
+ 			void *addr, size_t length, int access);
+ int xib_u_dereg_mr(struct ibv_mr *mr);
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+index 0838abeb6..4bb710a4e 100755
+--- a/providers/xib/xib_u_verbs.c
++++ b/providers/xib/xib_u_verbs.c
+@@ -109,7 +109,7 @@ int xib_u_free_pd(struct ibv_pd *pd)
+ }
+ 
+ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+-				int access)
++				uint64_t hca_va, int access)
+ {
+ 	int ret;
+ 	unsigned int id;
+@@ -167,7 +167,7 @@ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ }
+ 
+ struct ibv_mr *xib_u_reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length,
+-				int access)
++				uint64_t hca_va, int access)
+ {
+ 	int ret;
+ 	unsigned int id;

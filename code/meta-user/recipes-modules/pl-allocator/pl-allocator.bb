@@ -1,0 +1,15 @@
+SUMMARY = "Xnvme HA Pktgen module example. It is for kernel v4.9 and above"
+
+LICENSE = "GPLv2"
+LIC_FILES_CHKSUM = "file://COPYING.GPL;md5=fcb02dc552a041dee27e4b85c7396067"
+
+SRC_URI = "\
+	file://COPYING.GPL \
+	file://Makefile \
+	file://pl_allocater.c \
+	"
+
+S = "${WORKDIR}"
+
+inherit module
+

@@ -1,0 +1,95 @@
+From 51e5f1ec72278e4f093fb0d751448828423908b7 Mon Sep 17 00:00:00 2001
+From: anjaneyu <anjaneyu@xilinx.com>
+Date: Fri, 17 Jan 2020 17:53:02 +0530
+Subject: [PATCH] xib perftest support
+
+Signed-off-by: anjaneyu <anjaneyu@xilinx.com>
+---
+ src/perftest_communication.c | 5 +++++
+ src/perftest_parameters.c    | 2 +-
+ src/perftest_parameters.h    | 2 +-
+ src/perftest_resources.c     | 9 +++++++--
+ 4 files changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/src/perftest_communication.c b/src/perftest_communication.c
+index cd219fd..5d208f3 100755
+--- a/src/perftest_communication.c
++++ b/src/perftest_communication.c
+@@ -1022,8 +1022,13 @@ int create_comm_struct(struct perftest_comm *comm,
+ 		ALLOCATE(comm->rdma_ctx, struct pingpong_context, 1);
+ 		memset(comm->rdma_ctx, 0, sizeof(struct pingpong_context));
+ 
++#if 0
+ 		comm->rdma_params->tx_depth = 1;
+ 		comm->rdma_params->rx_depth = 1;
++#else
++		comm->rdma_params->tx_depth = 8;
++		comm->rdma_params->rx_depth = 4;
++#endif
+ 		comm->rdma_params->connection_type = RC;
+ 		comm->rdma_params->num_of_qps = 1;
+ 		comm->rdma_params->verb	= SEND;
+diff --git a/src/perftest_parameters.c b/src/perftest_parameters.c
+index 66d4e19..5e4f26c 100755
+--- a/src/perftest_parameters.c
++++ b/src/perftest_parameters.c
+@@ -2147,7 +2147,7 @@ void print_report_bw (struct perftest_parameters *user_param, struct bw_report_d
+ 	cycles_to_units = get_cpu_mhz(user_param->cpu_freq_f) * 1000000;
+ 	if ((cycles_to_units == 0 && !user_param->cpu_freq_f)) {
+ 		fprintf(stderr,"Can't produce a report\n");
+-		exit(1);
++		return;
+ 	}
+ 
+ 	run_inf_bi_factor = (user_param->duplex && user_param->test_method == RUN_INFINITELY) ? (user_param->verb == SEND ? 1 : 2) : 1 ;
+diff --git a/src/perftest_parameters.h b/src/perftest_parameters.h
+index fa9d4d8..611289e 100755
+--- a/src/perftest_parameters.h
++++ b/src/perftest_parameters.h
+@@ -108,7 +108,7 @@
+ #define DEF_SL	      (0)
+ #define DEF_GID_INDEX (-1)
+ #define DEF_NUM_QPS   (1)
+-#define DEF_RX_RDMA   (1)
++#define DEF_RX_RDMA   (4)
+ #define DEF_RX_SEND   (512)
+ #define DEF_CQ_MOD    (100)
+ #define DEF_SIZE_ATOMIC (8)
+diff --git a/src/perftest_resources.c b/src/perftest_resources.c
+index 71a1541..f7d6e59 100755
+--- a/src/perftest_resources.c
++++ b/src/perftest_resources.c
+@@ -1627,7 +1627,7 @@ struct ibv_qp* ctx_qp_create(struct pingpong_context *ctx,
+ 	memset(&attr, 0, sizeof(struct ibv_qp_init_attr));
+ 	attr.send_cq = ctx->send_cq;
+ 	attr.recv_cq = (user_param->verb == SEND) ? ctx->recv_cq : ctx->send_cq;
+-	attr.cap.max_send_wr  = user_param->tx_depth;
++	attr.cap.max_send_wr  = user_param->tx_depth * 2;
+ 	attr.cap.max_send_sge = MAX_SEND_SGE;
+ 	attr.cap.max_inline_data = user_param->inline_size;
+ 
+@@ -1638,7 +1638,11 @@ struct ibv_qp* ctx_qp_create(struct pingpong_context *ctx,
+ 	} else {
+ 		attr.srq = NULL;
+ 		attr.cap.max_recv_wr  = user_param->rx_depth;
++#if 1
++		attr.cap.max_recv_sge = user_param->size > 256? (user_param->size / 256): 1;
++#else
+ 		attr.cap.max_recv_sge = MAX_RECV_SGE;
++#endif
+ 	}
+ 
+ 	switch (user_param->connection_type) {
+@@ -2989,7 +2993,8 @@ int run_iter_bw(struct pingpong_context *ctx,struct perftest_parameters *user_pa
+ 				ne = ctx->send_cq_family->poll_cnt(ctx->send_cq, CTX_POLL_BATCH);
+ 			else
+ 			#endif
+-				ne = ibv_poll_cq(ctx->send_cq,CTX_POLL_BATCH,wc);
++
++			ne = ibv_poll_cq(ctx->send_cq,CTX_POLL_BATCH,wc);
+ 
+ 			if (ne > 0) {
+ 				for (i = 0; i < ne; i++) {
+-- 
+2.7.4
+

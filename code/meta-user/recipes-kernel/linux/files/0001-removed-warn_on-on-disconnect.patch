@@ -1,0 +1,14 @@
+diff --git a/drivers/infiniband/core/rdma_core.c b/drivers/infiniband/core/rdma_core.c
+index 29b1ab1d5f93..65626158ade4 100644
+--- a/drivers/infiniband/core/rdma_core.c
++++ b/drivers/infiniband/core/rdma_core.c
+@@ -899,7 +899,9 @@ static int __uverbs_cleanup_ufile(struct ib_uverbs_file *ufile,
+ 		 * if we hit this WARN_ON, that means we are
+ 		 * racing with a lookup_get.
+ 		 */
++#if 0
+ 		WARN_ON(uverbs_try_lock_object(obj, UVERBS_LOOKUP_WRITE));
++#endif
+ 		if (reason == RDMA_REMOVE_DRIVER_FAILURE)
+ 			obj->object = NULL;
+ 		if (!uverbs_destroy_uobject(obj, reason, &attrs))

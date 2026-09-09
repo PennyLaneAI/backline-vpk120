@@ -1,0 +1,58 @@
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+index d231857a3..badf283b9 100644
+--- a/providers/xib/xib_u_verbs.c
++++ b/providers/xib/xib_u_verbs.c
+@@ -23,6 +23,20 @@
+ #define XRNIC_DEF_RQ_DEPTH	16
+ #define XRNIC_DEF_SQ_DEPTH	32
+ 
++#define XRNIC_CQ_HEAD_PTR_MASK		0xffff
++#define SQ_BASE_ALIGNED(addr)	(((unsigned long)(addr) & 31) == 0)
++#define ERNIC_V4
++
++#ifdef ERNIC_V4
++#define XRNIC_RQ_CONS_IDX(q)		(0x134 + (q) * 0x100)
++#define XRNIC_CQ_HEAD_PTR(q)		(0x130 + (q) * 0x100)
++#define XRNIC_SQ_PROD_IDX(q)		(0x138 + (q) * 0x100)
++#else
++#define XRNIC_RQ_CONS_IDX(q)		(0x234 + (q) * 0x100)
++#define XRNIC_CQ_HEAD_PTR(q)		(0x230 + (q) * 0x100)
++#define XRNIC_SQ_PROD_IDX(q)		(0x238 + (q) * 0x100)
++#endif
++
+ static inline void xib_inc_sw_gsi_cons(struct xib_rq *rq)
+ {
+ 	rq->gsi_cons = (rq->gsi_cons + 1) % rq->max_wr;
+@@ -524,15 +538,12 @@ static int xib_u_get_rq_recd(struct xib_rq *rq, uint32_t rq_wr_current)
+ 	return received;
+ }
+ 
+-#define XRNIC_RQ_CONS_IDX(q)		(0x234 + (q) * 0x100)
+ static void xib_rq_db_consume(struct xib_context *context, int qpn, int val)
+ {
+ 	volatile uint32_t *temp = (volatile uint32_t *)(context->db_addr + XRNIC_RQ_CONS_IDX(qpn));
+ 	*temp = val;
+ }
+ 
+-#define XRNIC_CQ_HEAD_PTR(q)		(0x230 + (q) * 0x100)
+-  #define XRNIC_CQ_HEAD_PTR_MASK	0xffff
+ static uint32_t xib_sq_cq_head(struct xib_context *context, int qpn)
+ {
+ 	volatile uint32_t *temp = (volatile uint32_t *)(context->db_addr + XRNIC_CQ_HEAD_PTR(qpn)), val;
+@@ -717,7 +728,6 @@ int xib_u_arm_cq(struct ibv_cq *ibvcq, int solicited)
+ 	return 0;
+ }
+ 
+-#define XRNIC_SQ_PROD_IDX(q)		(0x238 + (q) * 0x100)
+ static void xib_sq_db_produce(struct xib_context *context, int qpn, int val)
+ {
+ 	volatile uint32_t *temp = (volatile uint32_t *)(context->db_addr + XRNIC_SQ_PROD_IDX(qpn));
+@@ -726,8 +736,6 @@ static void xib_sq_db_produce(struct xib_context *context, int qpn, int val)
+ 	*temp = val & 0xffff;
+ }
+ 
+-#define SQ_BASE_ALIGNED(addr)	(((unsigned long)(addr) & 31) == 0)
+-
+ void xib_u_send_wr(struct xib_qp *qp, struct xib_context *context,
+ 		struct xrnic_wr *xwqe)
+ {

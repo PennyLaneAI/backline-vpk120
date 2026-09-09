@@ -1,0 +1,26 @@
+From d526c744c8427b4401405fc25cbb3963dc7bf280 Mon Sep 17 00:00:00 2001
+From: anjaneyu <anjaneyu@xilinx.com>
+Date: Mon, 16 Dec 2019 13:30:36 +0530
+Subject: [PATCH] Microblaze support
+
+Signed-off-by: anjaneyu <anjaneyu@xilinx.com>
+---
+ src/perftest_resources.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/perftest_resources.h b/src/perftest_resources.h
+index d1073c7..bdf7fa3 100755
+--- a/src/perftest_resources.h
++++ b/src/perftest_resources.h
+@@ -223,7 +223,7 @@ struct pingpong_context {
+ 	union ibv_gid			gid;
+ 	unsigned			srqn;
+ 	int				gid_index;
+- };
++ }__attribute__((packed));;
+ 
+ /******************************************************************************
+  * Perftest resources Methods and interface utilitizes.
+-- 
+2.7.4
+

@@ -1,0 +1,373 @@
+diff --git a/kernel-headers/rdma/ib_user_verbs.h b/kernel-headers/rdma/ib_user_verbs.h
+old mode 100644
+new mode 100755
+index 7dd903d93..2fea91db7
+--- a/kernel-headers/rdma/ib_user_verbs.h
++++ b/kernel-headers/rdma/ib_user_verbs.h
+@@ -87,6 +87,7 @@ enum ib_uverbs_write_cmds {
+ 	IB_USER_VERBS_CMD_OPEN_XRCD,
+ 	IB_USER_VERBS_CMD_CLOSE_XRCD,
+ 	IB_USER_VERBS_CMD_CREATE_XSRQ,
++	IB_USER_VERBS_CMD_REG_MR_EX,
+ 	IB_USER_VERBS_CMD_OPEN_QP,
+ };
+ 
+diff --git a/libibverbs/cmd.c b/libibverbs/cmd.c
+old mode 100644
+new mode 100755
+index d70788239..4f0a3ae23
+--- a/libibverbs/cmd.c
++++ b/libibverbs/cmd.c
+@@ -96,6 +96,47 @@ int ibv_cmd_open_xrcd(struct ibv_context *context, struct verbs_xrcd *xrcd,
+ 	return 0;
+ }
+ 
++int ibv_cmd_reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length,
++		   uint64_t hca_va, int access,
++		   struct verbs_mr *vmr, struct ibv_reg_mr *cmd,
++		   size_t cmd_size,
++		   struct ib_uverbs_reg_mr_resp *resp, size_t resp_size)
++{
++	int ret;
++
++	cmd->start 	  = addr;
++	cmd->length 	  = length;
++	/* On demand access and entire address space means implicit.
++	 * In that case set the value in the command to what kernel expects.
++	 */
++	if (access & IBV_ACCESS_ON_DEMAND) {
++		if (length == SIZE_MAX && addr) {
++			errno = EINVAL;
++			return EINVAL;
++		}
++		if (length == SIZE_MAX)
++			cmd->length = UINT64_MAX;
++	}
++
++	cmd->hca_va 	  = hca_va;
++	cmd->pd_handle 	  = pd->handle;
++	cmd->access_flags = access;
++
++	ret = execute_cmd_write(pd->context, IB_USER_VERBS_CMD_REG_MR_EX, cmd,
++				cmd_size, resp, resp_size);
++	if (ret)
++		return ret;
++
++	vmr->ibv_mr.handle  = resp->mr_handle;
++	vmr->ibv_mr.lkey    = resp->lkey;
++	vmr->ibv_mr.rkey    = resp->rkey;
++	vmr->ibv_mr.context = pd->context;
++	vmr->mr_type        = IBV_MR_TYPE_MR;
++
++	return 0;
++}
++
++
+ int ibv_cmd_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 		   uint64_t hca_va, int access,
+ 		   struct verbs_mr *vmr, struct ibv_reg_mr *cmd,
+diff --git a/libibverbs/driver.h b/libibverbs/driver.h
+old mode 100644
+new mode 100755
+index 9b5cca742..d9e9f9040
+--- a/libibverbs/driver.h
++++ b/libibverbs/driver.h
+@@ -437,6 +437,8 @@ struct verbs_context_ops {
+ 					int fd, int access);
+ 	struct ibv_mr *(*reg_mr)(struct ibv_pd *pd, void *addr, size_t length,
+ 				 uint64_t hca_va, int access);
++	struct ibv_mr *(*reg_mr_ex)(struct ibv_pd *pd, uint64_t addr, uint64_t length,
++				 uint64_t hca_va, int access);
+ 	int (*req_notify_cq)(struct ibv_cq *cq, int solicited_only);
+ 	int (*rereg_mr)(struct verbs_mr *vmr, int flags, struct ibv_pd *pd,
+ 			void *addr, size_t length, int access);
+@@ -541,6 +543,11 @@ int ibv_cmd_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 		   struct verbs_mr *vmr, struct ibv_reg_mr *cmd,
+ 		   size_t cmd_size,
+ 		   struct ib_uverbs_reg_mr_resp *resp, size_t resp_size);
++int ibv_cmd_reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length,
++		   uint64_t hca_va, int access,
++		   struct verbs_mr *vmr, struct ibv_reg_mr *cmd,
++		   size_t cmd_size,
++		   struct ib_uverbs_reg_mr_resp *resp, size_t resp_size);
+ int ibv_cmd_rereg_mr(struct verbs_mr *vmr, uint32_t flags, void *addr,
+ 		     size_t length, uint64_t hca_va, int access,
+ 		     struct ibv_pd *pd, struct ibv_rereg_mr *cmd,
+diff --git a/libibverbs/dummy_ops.c b/libibverbs/dummy_ops.c
+old mode 100644
+new mode 100755
+index bf70775ad..a2ee09d8c
+--- a/libibverbs/dummy_ops.c
++++ b/libibverbs/dummy_ops.c
+@@ -449,6 +449,14 @@ static struct ibv_mr *reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 	return NULL;
+ }
+ 
++
++static struct ibv_mr *reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length,
++			     uint64_t hca_va,  int access)
++{
++	errno = EOPNOTSUPP;
++	return NULL;
++}
++
+ static struct ibv_mr *reg_dmabuf_mr(struct ibv_pd *pd, uint64_t offset,
+ 				    size_t length, uint64_t iova,
+ 				    int fd, int access)
+@@ -697,6 +705,7 @@ void verbs_set_ops(struct verbs_context *vctx,
+ 	SET_OP(vctx, reg_dm_mr);
+ 	SET_PRIV_OP_IC(vctx, reg_dmabuf_mr);
+ 	SET_PRIV_OP(ctx, reg_mr);
++	SET_PRIV_OP(ctx, reg_mr_ex);
+ 	SET_OP(ctx, req_notify_cq);
+ 	SET_PRIV_OP(ctx, rereg_mr);
+ 	SET_PRIV_OP(ctx, resize_cq);
+diff --git a/libibverbs/kern-abi.h b/libibverbs/kern-abi.h
+old mode 100644
+new mode 100755
+index 1238569b7..8e767a9e3
+--- a/libibverbs/kern-abi.h
++++ b/libibverbs/kern-abi.h
+@@ -204,6 +204,7 @@ DECLARE_CMD(IB_USER_VERBS_CMD_QUERY_PORT, ibv_query_port, ib_uverbs_query_port);
+ DECLARE_CMD(IB_USER_VERBS_CMD_QUERY_QP, ibv_query_qp, ib_uverbs_query_qp);
+ DECLARE_CMD(IB_USER_VERBS_CMD_QUERY_SRQ, ibv_query_srq, ib_uverbs_query_srq);
+ DECLARE_CMD(IB_USER_VERBS_CMD_REG_MR, ibv_reg_mr, ib_uverbs_reg_mr);
++DECLARE_CMD(IB_USER_VERBS_CMD_REG_MR_EX, ibv_reg_mr_ex, ib_uverbs_reg_mr);
+ DECLARE_CMDX(IB_USER_VERBS_CMD_REQ_NOTIFY_CQ, ibv_req_notify_cq, ib_uverbs_req_notify_cq, empty);
+ DECLARE_CMD(IB_USER_VERBS_CMD_REREG_MR, ibv_rereg_mr, ib_uverbs_rereg_mr);
+ DECLARE_CMD(IB_USER_VERBS_CMD_RESIZE_CQ, ibv_resize_cq, ib_uverbs_resize_cq);
+diff --git a/libibverbs/libibverbs.map.in b/libibverbs/libibverbs.map.in
+old mode 100644
+new mode 100755
+index 9cc13d5e8..189513537
+--- a/libibverbs/libibverbs.map.in
++++ b/libibverbs/libibverbs.map.in
+@@ -17,6 +17,7 @@ IBVERBS_1.0 {
+ 		ibv_alloc_pd;
+ 		ibv_dealloc_pd;
+ 		ibv_reg_mr;
++		ibv_reg_mr_ex;
+ 		ibv_dereg_mr;
+ 		ibv_create_comp_channel;
+ 		ibv_destroy_comp_channel;
+@@ -94,6 +95,7 @@ IBVERBS_1.1 {
+ 		ibv_query_srq;
+ 		ibv_rate_to_mbps;
+ 		ibv_reg_mr;
++		ibv_reg_mr_ex;
+ 		ibv_register_driver;
+ 		ibv_rereg_mr;
+ 		ibv_resize_cq;
+diff --git a/libibverbs/verbs.c b/libibverbs/verbs.c
+old mode 100644
+new mode 100755
+index 69f82e54c..63f55bdcf
+--- a/libibverbs/verbs.c
++++ b/libibverbs/verbs.c
+@@ -307,6 +307,30 @@ LATEST_SYMVER_FUNC(ibv_dealloc_pd, 1_1, "IBVERBS_1.1",
+ 	return get_ops(pd->context)->dealloc_pd(pd);
+ }
+ 
++
++LATEST_SYMVER_FUNC(ibv_reg_mr_ex, 1_1, "IBVERBS_1.1",
++		   struct ibv_mr *,
++		   struct ibv_pd *pd, uint64_t addr,
++		   uint64_t length, int access)
++{
++	struct ibv_mr *mr;
++
++	if (ibv_dontfork_range(addr, length))
++		return NULL;
++
++	mr = get_ops(pd->context)->reg_mr_ex(pd, addr, length, addr,
++					  access);
++	if (mr) {
++		mr->context = pd->context;
++		mr->pd      = pd;
++		mr->addr    = addr;
++		mr->length  = length;
++	} else
++		ibv_dofork_range(addr, length);
++
++	return mr;
++}
++
+ struct ibv_mr *ibv_reg_mr_iova2(struct ibv_pd *pd, void *addr, size_t length,
+ 				uint64_t iova, unsigned int access)
+ {
+diff --git a/libibverbs/verbs.h b/libibverbs/verbs.h
+old mode 100644
+new mode 100755
+index 713cce6ce..df757ccea
+--- a/libibverbs/verbs.h
++++ b/libibverbs/verbs.h
+@@ -662,11 +662,12 @@ enum ibv_rereg_mr_flags {
+ struct ibv_mr {
+ 	struct ibv_context     *context;
+ 	struct ibv_pd	       *pd;
+-	void		       *addr;
+-	size_t			length;
++	uint64_t	        addr;
++	uint64_t		length;
+ 	uint32_t		handle;
+ 	uint32_t		lkey;
+ 	uint32_t		rkey;
++	uint32_t		dummy;
+ };
+ 
+ enum ibv_mw_type {
+@@ -1949,6 +1950,7 @@ struct ibv_context_ops {
+ 	void *(*_compat_alloc_pd)(void);
+ 	void *(*_compat_dealloc_pd)(void);
+ 	void *(*_compat_reg_mr)(void);
++	void *(*_compat_reg_mr_ex)(void);
+ 	void *(*_compat_rereg_mr)(void);
+ 	void *(*_compat_dereg_mr)(void);
+ 	struct ibv_mw *		(*alloc_mw)(struct ibv_pd *pd, enum ibv_mw_type type);
+@@ -2526,6 +2528,8 @@ struct ibv_mr *ibv_reg_mr_iova2(struct ibv_pd *pd, void *addr, size_t length,
+  */
+ struct ibv_mr *ibv_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 			  int access);
++struct ibv_mr *ibv_reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length,
++			  int access);
+ /* use new ibv_reg_mr version only if access flags that require it are used */
+ __attribute__((__always_inline__)) static inline struct ibv_mr *
+ __ibv_reg_mr(struct ibv_pd *pd, void *addr, size_t length, unsigned int access,
+diff --git a/providers/xib/xib_u.c b/providers/xib/xib_u.c
+index 032c441e3..951760dc5 100755
+--- a/providers/xib/xib_u.c
++++ b/providers/xib/xib_u.c
+@@ -71,6 +71,7 @@ static const struct verbs_context_ops xib_ctx_common_ops = {
+ 	.alloc_pd		= xib_u_alloc_pd,
+ 	.dealloc_pd		= xib_u_free_pd,
+ 	.reg_mr			= xib_u_reg_mr,
++	.reg_mr_ex		= xib_u_reg_mr_ex,
+ 	.rereg_mr		= xib_u_rereg_mr,
+ 	.dereg_mr		= xib_u_dereg_mr,
+ 
+diff --git a/providers/xib/xib_u.h b/providers/xib/xib_u.h
+index 0681a7deb..18c55116c 100755
+--- a/providers/xib/xib_u.h
++++ b/providers/xib/xib_u.h
+@@ -186,6 +186,8 @@ struct ibv_pd *xib_u_alloc_pd(struct ibv_context *context);
+ int xib_u_free_pd(struct ibv_pd *pd);
+ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 				int access);
++struct ibv_mr *xib_u_reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length,
++				int access);
+ int xib_u_rereg_mr(struct ibv_mr *mr, int flags, struct ibv_pd *pd,
+ 			void *addr, size_t length, int access);
+ int xib_u_dereg_mr(struct ibv_mr *mr);
+diff --git a/providers/xib/xib_u_verbs.c b/providers/xib/xib_u_verbs.c
+index 3f80c1483..6e0dcc8c6 100755
+--- a/providers/xib/xib_u_verbs.c
++++ b/providers/xib/xib_u_verbs.c
+@@ -116,6 +116,7 @@ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 	struct ibv_mr *mr;
+ 	struct ibv_reg_mr cmd;
+ 	struct ib_uverbs_reg_mr_resp resp;
++	uint64_t pa;
+ 
+ 	if(!addr) {
+ 		fprintf(stderr, "MR addr is NULL!\n");
+@@ -133,25 +134,96 @@ struct ibv_mr *xib_u_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
+ 
+ 	memset(mr, 0, sizeof(*mr));
+ 
+-	ret = ibv_cmd_reg_mr(pd, addr, length, (uintptr_t) addr, access, mr,
++	id = xib_umm_get_chunk_id(pd->context, (unsigned long)addr);
++	if (id != XMEM_INVALID_CHUNK_ID) {
++		mr->lkey = id;
++	} else {
++		printf("%s:%d couldn't find chunk id for the given address [%#lx]\n",
++				__func__, __LINE__, addr);
++		free(mr);
++		return NULL;
++	}
++
++#if defined(__MICROBLAZEEL__)
++	ret = xib_umem_get_phy_addr(pd->context, id, addr, &pa);
++	if (ret < 0) {
++		printf("Failed to find va %llx phys addr\n", addr);
++		return ret;
++	}
++#else
++	pa = (uint64_t)(uintptr_t)addr;
++#endif
++
++	ret = ibv_cmd_reg_mr(pd, pa, length, (uintptr_t) addr, access, mr,
+ 				&cmd, sizeof(cmd), &resp, sizeof(resp));
+ 	if (ret) {
++		printf("ibv_cmd_reg_mr failed %d\n", ret);
+ 		free(mr);
+ 		return NULL;
+ 	}
+-	id = xib_umm_get_chunk_id(pd->context, (unsigned long)addr);
++	mr->lkey = id;
++
++	return mr;
++}
++
++struct ibv_mr *xib_u_reg_mr_ex(struct ibv_pd *pd, uint64_t addr, uint64_t length,
++				int access)
++{
++	int ret;
++	unsigned int id;
++	struct ibv_mr *mr;
++	struct ibv_reg_mr cmd;
++	struct ib_uverbs_reg_mr_resp resp;
++	uint64_t pa;
++
++	if(!addr) {
++		fprintf(stderr, "MR addr is NULL!\n");
++		return NULL;
++	}
++
++	if(!length) {
++		fprintf(stderr, "MR length is 0!\n");
++		return NULL;
++	}
++
++	mr = malloc(sizeof(struct ibv_mr));
++	if (!mr)
++		return NULL;
++
++	memset(mr, 0, sizeof(*mr));
++
++	id = xib_umm_get_chunk_id(pd->context, addr);
+ 	if (id != XMEM_INVALID_CHUNK_ID) {
+ 		mr->lkey = id;
+ 	} else {
+-		printf("%s:%d couldn't find chunk id for the given address [%#lx]\n",
++		printf("%s:%d couldn't find chunk id for the given address [%llx]\n",
+ 				__func__, __LINE__, addr);
+ 		free(mr);
+ 		return NULL;
+ 	}
++
++#if defined(__MICROBLAZEEL__)
++	ret = xib_umem_get_phy_addr(pd->context, id, addr, &pa);
++	if (ret < 0) {
++		printf("Failed to find va %llx phys addr\n", addr);
++		return ret;
++	}
++#else
++	pa = (uint64_t)(uintptr_t)addr;
++#endif
++
++	ret = ibv_cmd_reg_mr_ex(pd, pa, length, addr, access, mr,
++				&cmd, sizeof(cmd), &resp, sizeof(resp));
++	if (ret) {
++		printf("ibv_cmd_reg_mr_ex failed %d\n", ret);
++		free(mr);
++		return NULL;
++	}
++	mr->lkey = id;
++
+ 	return mr;
+ }
+ 
+-
+ int xib_u_rereg_mr(struct ibv_mr *mr, int flags, struct ibv_pd *pd,
+ 			void *addr, size_t length, int access)
+ {

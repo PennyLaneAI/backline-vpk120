@@ -1,0 +1,13 @@
+diff --git a/src/send_bw.c b/src/send_bw.c
+index ccf8186..03dafc1 100755
+--- a/src/send_bw.c
++++ b/src/send_bw.c
+@@ -256,6 +256,8 @@ int main(int argc, char *argv[])
+ 	/* Allocating arrays needed for the test. */
+ 	alloc_ctx(&ctx,&user_param);
+ 
++        user_param.rx_depth = 4;
++
+ 	/* Create (if nessacery) the rdma_cm ids and channel. */
+ 	if (user_param.work_rdma_cm == ON) {
+ 
