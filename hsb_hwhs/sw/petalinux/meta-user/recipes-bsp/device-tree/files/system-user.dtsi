@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Xanadu Quantum Technologies Inc.
+//
+// backline-hsb device tree: the PL windows the hwhs driver maps through UIO.
+
+&cips_block_axi_gpio_gt_reset_mask {
+	compatible = "generic-uio";
+};
+&cips_block_gtctrl {
+	compatible = "generic-uio";
+};
+&cips_block_axi_gpio_debug {
+	compatible = "generic-uio";
+};
+&axi_gpio_id {
+	compatible = "generic-uio";
+};
+&axi_gpio_ctl {
+	compatible = "generic-uio";
+};
+
+// Linux uses the 2 GB of DDR_LOW0; the other two LPDDR4 triplets are unused.
+&memoryaxi_noc_0_ddr {
+	reg = <0x0 0x00000000 0x0 0x80000000>;
+};
+&memoryaxi_noc_1_ddr {
+	status = "disabled";
+};
+&memoryaxi_noc_2_ddr {
+	status = "disabled";
+};
+
+&amba_pl {
+	// Explicit nodes: BD external ports get none, and the BRAM windows have two addresses.
+	hwhs@a4000000 {
+		compatible = "generic-uio";
+		reg = <0x0 0xa4000000 0x0 0x10000>;
+	};
+	mrmac@a4040000 {
+		compatible = "generic-uio";
+		reg = <0x0 0xa4040000 0x0 0x10000>;
+	};
+	hwhs_demo@80000000 {
+		compatible = "generic-uio";
+		reg = <0x0 0x80000000 0x0 0x100000>;
+	};
+	hwhs_slot@91000000 {
+		compatible = "generic-uio";
+		reg = <0x0 0x91000000 0x0 0x10000>;
+	};
+	hwhs_trace@92000000 {
+		compatible = "generic-uio";
+		reg = <0x0 0x92000000 0x0 0x200000>;
+	};
+	hwhs_reply@93000000 {
+		compatible = "generic-uio";
+		reg = <0x0 0x93000000 0x0 0x10000>;
+	};
+};

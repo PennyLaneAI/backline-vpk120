@@ -1,19 +1,20 @@
 # backline-vpk120
 
-Backline's FPGA controller on the AMD Versal™ Premium VPK120. Each folder is a complete build
-with its own README.
+Backline's FPGA controller on the AMD Versal™ Premium VPK120, in two builds. Each folder is a
+complete build with its own README, and the board runs one of them at a time.
 
 | Folder | Network IP on the FPGA | Round engine | Catalyst backend |
 |---|---|---|---|
 | [`ernic_hwhs/`](ernic_hwhs/README.md) | AMD ERNIC | hwhs | `hwhs`, or `fpga_verbs` for the CPU-driven round |
-| [`hsb_hwhs/`](hsb_hwhs/README.md) | NVIDIA HSB | hwhs-hsb | `hsb_hwhs` |
+| [`hsb_hwhs/`](hsb_hwhs/README.md) | NVIDIA Holoscan Sensor Bridge (HSB) | hwhs-hsb | `hsb_hwhs` |
 
-The controller sends each syndrome to a coprocessor over 100G RoCE v2 and times the round trip.
-ERNIC is AMD's RDMA NIC IP, which carries it.
+In both, the controller sends each syndrome to a coprocessor over 100G RoCE v2 and times the
+round trip. The difference is the IP that carries it: ERNIC is AMD's RDMA NIC IP, while HSB is
+NVIDIA's open-source sensor bridge IP.
 
-The build starts from AMD's **ERNIC VPK120 MRMAC reference design, rev 1.3**
-(`reference design VPK120_mrmac_rev_1.3.zip`), which you download from AMD. This repository does
-not redistribute it.
+Both builds start from AMD's **ERNIC VPK120 MRMAC reference design, rev 1.3**
+(`reference design VPK120_mrmac_rev_1.3.zip`), which you download from AMD. Neither folder
+redistributes it.
 
 ## Licensing
 
@@ -25,8 +26,10 @@ Each folder is licensed on its own terms; see its README.
     the open-source licenses of its parts.
   - Rebuilding needs AMD's ERNIC and 100G Multirate Ethernet MAC IP licenses.
 - **`hsb_hwhs/`**:
-  - The RTL in `hw/` is Apache-2.0.
-  - `third_party/hsb/` is NVIDIA's Holoscan Sensor Bridge IP under Apache-2.0.
+  - Our files are Apache-2.0 (`hsb_hwhs/LICENSE`).
+  - HSB is Apache-2.0, © NVIDIA, vendored unmodified in `hsb_hwhs/third_party/hsb`.
+  - No AMD file is in the folder: `make amd` unpacks the parts of AMD's download that the build
+    reads, the board device tree included, into `build/`.
+  - No ERNIC license is needed.
 
 Versal, and Vivado, are trademarks of Advanced Micro Devices, Inc.
-NVIDIA and Holoscan are trademarks of NVIDIA Corporation.
