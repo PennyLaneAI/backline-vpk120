@@ -4,16 +4,18 @@
 # create_project.tcl - create the backline-hsb Vivado project (Vivado 2024.2).
 #
 #   vivado -mode batch -source hw/scripts/create_project.tcl -tclargs \
-#       -amd build/amd/hw -out build/vivado [-hif_mhz 250]
+#       -amd build/amd/hw -out build/vivado [-hif_mhz 250] [-hsb build/hsb/nv_hsb_ip]
 #
 #   -amd      AMD's hw files, from scripts/unpack-amd.sh (build/amd/hw)
 #   -out      where the project goes (build/vivado/backline_hsb/backline_hsb.xpr)
 #   -hif_mhz  HSB host/sensor clock and hwhs clock
+#   -hsb      the HSB IP to build (make hsb-src: third_party's copy with patches/ applied)
 
 set repo    [file normalize [file join [file dirname [info script]] .. ..]]
 set amd_hw  [file join $repo build amd hw]
 set out_dir [file join $repo build vivado]
 set hif_mhz 250.0
+set hsb_dir [file join $repo third_party hsb nv_hsb_ip]
 
 for {set i 0} {$i < $::argc} {incr i} {
     set opt [lindex $::argv $i]
@@ -21,6 +23,7 @@ for {set i 0} {$i < $::argc} {incr i} {
         "-amd"     { incr i; set amd_hw  [file normalize [lindex $::argv $i]] }
         "-out"     { incr i; set out_dir [file normalize [lindex $::argv $i]] }
         "-hif_mhz" { incr i; set hif_mhz [lindex $::argv $i] }
+        "-hsb"     { incr i; set hsb_dir [file normalize [lindex $::argv $i]] }
         default    { error "create_project.tcl: unknown option $opt" }
     }
 }
@@ -70,7 +73,7 @@ set_property registered_with_manager 1 [get_files clk_wizard_0.xci]
 set_property synth_checkpoint_mode Singular [get_files clk_wizard_0.xci]
 
 # HSB
-set hsb_rtl [lsort [glob [file join $repo third_party hsb nv_hsb_ip * *.sv]]]
+set hsb_rtl [lsort [glob [file join $hsb_dir * *.sv]]]
 set hsb_pkg [lsearch -all -inline $hsb_rtl *pkg.sv]
 set hsb_mod [lsearch -all -inline -not $hsb_rtl *pkg.sv]
 add_files -norecurse -fileset $src [concat $hsb_pkg $hsb_mod]

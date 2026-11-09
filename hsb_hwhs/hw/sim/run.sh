@@ -20,7 +20,7 @@ if [ "$(printf '%s\n' 5.048 "$VER" | sort -V | head -1)" != 5.048 ]; then
     exit 1
 fi
 
-HSB="$REPO/third_party/hsb/nv_hsb_ip"
+HSB="${HSB:-$REPO/third_party/hsb/nv_hsb_ip}"   # make passes the copy with patches/ applied
 { ls "$HSB"/*/*pkg.sv; ls "$HSB"/*/*.sv | grep -v 'pkg\.sv$'; } > "$OUT/hsb.f"
 RTL=("$REPO"/hw/rtl/hwhs/*.v)
 WARN=(-Wno-fatal -Wno-lint -Wno-style -Wno-WIDTH -Wno-UNOPTFLAT -Wno-TIMESCALEMOD)
@@ -51,4 +51,6 @@ if [ "$what" = sim ] || [ "$what" = all ]; then
         "$HERE/hwhs_engine_sva.sv" "$HERE/tb_hwhs_hsb.sv" -o tb_hwhs_hsb > "$OUT/build.log" 2>&1 || { tail -40 "$OUT/build.log"; exit 1; }
     echo "== run tb_hwhs_hsb"
     "$OUT/obj_tb/tb_hwhs_hsb"
+    echo "== run tb_hwhs_hsb +plain_write"
+    "$OUT/obj_tb/tb_hwhs_hsb" +plain_write
 fi

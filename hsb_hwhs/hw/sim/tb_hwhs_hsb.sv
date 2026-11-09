@@ -29,6 +29,9 @@ module tb_hwhs_hsb;
   int unsigned cyc = 0;
   always @(posedge hif_clk) cyc <= cyc + 1;
 
+  bit plain_write = 1'b0; // +plain_write: requests come as UC WRITE_ONLY (0x2A),
+  initial plain_write = $test$plusargs("plain_write");
+
   logic sys_rst = 1'b1;
   logic hwhs_rstn = 1'b0;
 
@@ -441,28 +444,29 @@ module tb_hwhs_hsb;
         if (hif_tx_tkeep[0][k]) begin txf[txn] = hif_tx_tdata[0][8 * k +: 8]; txn++; end
       if (hif_tx_tlast[0]) begin
         t_tx_last = cyc;
-        // UC RDMA WRITE_ONLY_WITH_IMM
+        // UC RDMA WRITE_ONLY_WITH_IMM, or WRITE_ONLY with +plain_write
         if ({txf[12], txf[13]} == 16'h0800 && txf[23] == 8'h11 && {txf[36], txf[37]} == 16'd4791 &&
-            txf[42] == 8'h2B) begin
+            txf[42] == (plain_write ? 8'h2A : 8'h2B)) begin
+          automatic int          po   = plain_write ? 70 : 74;   // payload offset: no ImmDt
           automatic logic [23:0] qpn  = {txf[47], txf[48], txf[49]};
           automatic logic [63:0] va   = {be32(54), be32(58)};
           automatic logic [31:0] rkey = be32(62);
           automatic logic [31:0] dlen = be32(66);
           automatic logic [31:0] imm  = be32(70);
-          automatic int          slot = int'(imm[11:0]);
+          automatic int          slot = plain_write ? int'(va / 128) : int'(imm[11:0]);
           n_writes++;
           if (qpn != HOST_QPN || rkey != HOST_RKEY || dlen != 64 || va != 64'(slot * 128) ||
-              txn != 74 + 64 + 4) begin
+              txn != po + 64 + 4) begin
             errors++;
             $display("  FAIL: request frame: qpn 0x%06x rkey 0x%08x len %0d va 0x%0x slot %0d bytes %0d",
                      qpn, rkey, dlen, va, slot, txn);
           end
-          for (int i = 0; i < 64; i++) host_ring[slot * 128 + i] = txf[74 + i];
+          for (int i = 0; i < 64; i++) host_ring[slot * 128 + i] = txf[po + i];
           if (drop_next > 0) begin
             drop_next--;
           end else begin
             automatic logic [127:0] pay = '0;
-            for (int i = 0; i < 16; i++) pay[8 * i +: 8] = txf[74 + i];
+            for (int i = 0; i < 16; i++) pay[8 * i +: 8] = txf[po + i];
             rq_pay.push_back(pay);
             rq_at.push_back(cyc + 32'(late_next > 0 ? 6000 : reply_delay));
             if (late_next > 0) late_next--;
@@ -622,7 +626,7 @@ module tb_hwhs_hsb;
     ecb_wr(32'h0000_1020, HOST_MAC[31:0]);
     ecb_wr(32'h0000_1024, {16'h0, HOST_MAC[47:32]});
     ecb_wr(32'h0000_1028, HOST_IP);
-    ecb_wr(32'h0000_102C, 32'd4791 | (32'd1 << 16));
+    ecb_wr(32'h0000_102C, 32'd4791 | (32'd1 << 16) | (32'(plain_write) << 17));
     ecb_wr(32'h0000_1034, 32'h0);
     ecb_wr(32'h0000_1000, {8'h0, HOST_QPN});
     ecb_wr(32'h0000_1004, HOST_RKEY);

@@ -11,6 +11,7 @@
 #   make host                       hsb-echo, on the coprocessor host (needs rdma-core)
 #   make host-gpu                   hsb-gpu-echo, on the coprocessor host (needs ROCm too)
 #   make check                      lint + sim + dryrun + test (no Vivado needed)
+#   make hsb-src                    HSB with patches/*.patch applied, in build/hsb
 SHELL   := /bin/bash
 REPO    := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 BUILD   := $(REPO)/build
@@ -19,18 +20,25 @@ JOBS    ?= 8
 VIVADO  ?= vivado
 BSP     ?= $(BUILD)/amd/sw/xilinx-vpk120-xsct-v2024.2-final.bsp
 PROJ    := $(BUILD)/vivado/backline_hsb
+HSB_SRC := $(BUILD)/hsb/nv_hsb_ip
 
-.PHONY: amd project hw petalinux boot apps host host-gpu lint sim dryrun test check clean
+.PHONY: amd hsb-src project hw petalinux boot apps host host-gpu lint sim dryrun test check clean
 
 amd:
 	@test -n "$(AMD)" || { echo 'usage: make amd AMD="<dir>/reference design VPK120_mrmac_rev_1.3.zip" [WITH_BSP=1]'; exit 1; }
 	scripts/unpack-amd.sh "$(AMD)" $(if $(filter 1,$(WITH_BSP)),--bsp) "$(BUILD)/amd"
 
-project:
+hsb-src:
+	rm -rf $(HSB_SRC)
+	mkdir -p $(dir $(HSB_SRC))
+	cp -R third_party/hsb/nv_hsb_ip $(HSB_SRC)
+	for p in $(sort $(wildcard $(REPO)/patches/*.patch)); do patch -p1 -s --forward -d $(HSB_SRC) < $$p || exit 1; done
+
+project: hsb-src
 	rm -rf $(PROJ)
 	mkdir -p $(BUILD)/vivado
 	cd $(BUILD)/vivado && $(VIVADO) -mode batch -source $(REPO)/hw/scripts/create_project.tcl \
-	    -tclargs -amd $(BUILD)/amd/hw -out $(BUILD)/vivado -hif_mhz $(HIF_MHZ)
+	    -tclargs -amd $(BUILD)/amd/hw -out $(BUILD)/vivado -hif_mhz $(HIF_MHZ) -hsb $(HSB_SRC)
 
 hw: project
 	cd $(BUILD)/vivado && $(VIVADO) -mode batch -source $(REPO)/hw/scripts/build.tcl \
@@ -52,11 +60,11 @@ host:
 host-gpu:
 	$(MAKE) -C host/hsb-gpu-echo
 
-lint:
-	OUT=$(BUILD)/sim hw/sim/run.sh lint
+lint: hsb-src
+	HSB=$(HSB_SRC) OUT=$(BUILD)/sim hw/sim/run.sh lint
 
-sim:
-	OUT=$(BUILD)/sim hw/sim/run.sh sim
+sim: hsb-src
+	HSB=$(HSB_SRC) OUT=$(BUILD)/sim hw/sim/run.sh sim
 
 dryrun:
 	tclsh hw/sim/tcl_dryrun.tcl $(BUILD)/amd/hw

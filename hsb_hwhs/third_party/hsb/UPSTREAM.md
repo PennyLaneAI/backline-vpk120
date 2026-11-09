@@ -13,6 +13,11 @@ Everything VPK120-specific lives outside this directory:
 - the build configuration (`HOLOLINK_def.svh`) is `hw/rtl/hsb_cfg/HOLOLINK_def.svh`.
 - the board top that instantiates `HOLOLINK_top` is `hw/rtl/top/backline_hsb_top.sv`.
 
+## Local changes
+
+Changes to the IP are patches in `patches/` at the repository root,
+applied by `make hsb-src` to a copy in `build/hsb/nv_hsb_ip` (see `patches/README.md`).
+
 ## Check that the copy is unmodified
 
 ```bash
