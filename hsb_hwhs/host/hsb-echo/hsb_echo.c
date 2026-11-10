@@ -3,12 +3,15 @@
 /*
  * hsb-echo - CPU coprocessor test peer for backline-hsb.
  *
- * HSB writes each request into a ring here (UC WRITE_WITH_IMM, imm = {psn[19:0], slot[11:0]}).
- * hsb-echo answers with a UC SEND of the request's first 16 bytes to QP 2 (HSB sensor-TX 0).
+ * HSB writes each request into a ring here as a UC RDMA WRITE (the bitstream needs
+ * patches/0001). hsb-echo answers with a UC SEND of the request's first 16 bytes to QP 2 (HSB
+ * sensor-TX 0).
  *
- *   hsb-echo -d mlx5_1 [-i ib_port] [-g gid_index] [-p tcp_port] [-s slots] [-c cpu] [-r]
+ *   hsb-echo -d mlx5_1 [-i ib_port] [-g gid_index] [-p tcp_port] [-s slots] [-c cpu] [-r] [-I]
  *
  *   -r  realtime: SCHED_FIFO and /dev/cpu_dma_latency = 0 (needs root)
+ *   -I  ask for WRITE_WITH_IMM instead (stock HSB, imm = {psn[19:0], slot[11:0]}), which takes a
+ *       receive per request
  *
  * Serves one session (common/include/hsb_handshake.h), then exits. The RoCE interface must
  * be in HSB's subnet (HSB host port 0: 192.168.0.2).
@@ -134,10 +137,10 @@ static void post_recvs(struct ibv_qp *qp, unsigned n)
 int main(int argc, char **argv)
 {
     const char *devname = NULL;
-    int ib_port = 1, gid_index = 3, tcp_port = HSB_HS_PORT, cpu = -1, rt = 0, c;
+    int ib_port = 1, gid_index = 3, tcp_port = HSB_HS_PORT, cpu = -1, rt = 0, imm = 0, c;
     unsigned slots = 256;
 
-    while ((c = getopt(argc, argv, "d:i:g:p:s:c:r")) != -1) {
+    while ((c = getopt(argc, argv, "d:i:g:p:s:c:rI")) != -1) {
         switch (c) {
         case 'd':
             devname = optarg;
@@ -160,9 +163,12 @@ int main(int argc, char **argv)
         case 'r':
             rt = 1;
             break;
+        case 'I':
+            imm = 1;
+            break;
         default:
             fprintf(stderr, "usage: hsb-echo -d <ibdev> [-i ib_port] [-g gid_index] [-p tcp_port] "
-                            "[-s slots] [-c cpu] [-r]\n");
+                            "[-s slots] [-c cpu] [-r] [-I]\n");
             return 2;
         }
     }
@@ -244,7 +250,8 @@ int main(int argc, char **argv)
 
     /* ---- PD, CQs, UC QP, ring at IOVA 0 --------------------------------------------- */
     struct ibv_pd *pd = ibv_alloc_pd(ctx);
-    struct ibv_cq *rcq = ibv_create_cq(ctx, MAX_RECV * 2, NULL, NULL, 0);
+    const unsigned recvs = imm ? MAX_RECV : 1; /* only a WRITE_WITH_IMM takes a receive */
+    struct ibv_cq *rcq = ibv_create_cq(ctx, (int)recvs * 2, NULL, NULL, 0);
     struct ibv_cq *scq = ibv_create_cq(ctx, MAX_SEND * 2, NULL, NULL, 0);
     if (!pd || !rcq || !scq) {
         die("pd/cq");
@@ -256,7 +263,7 @@ int main(int argc, char **argv)
         .qp_type = IBV_QPT_UC,
         .sq_sig_all = 0,
         .cap = {.max_send_wr = MAX_SEND,
-                .max_recv_wr = MAX_RECV,
+                .max_recv_wr = recvs,
                 .max_send_sge = 1,
                 .max_recv_sge = 1,
                 .max_inline_data = 64},
@@ -286,7 +293,9 @@ int main(int argc, char **argv)
                       IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS)) {
         die("QP -> INIT");
     }
-    post_recvs(qp, MAX_RECV);
+    if (imm) {
+        post_recvs(qp, MAX_RECV);
+    }
 
     /* ---- handshake ------------------------------------------------------------------ */
     int ls = socket(AF_INET, SOCK_STREAM, 0), one = 1;
@@ -317,7 +326,7 @@ int main(int argc, char **argv)
         .ring_pitch = RING_PITCH,
         .ring_slots = slots,
         .ip = host_ip,
-        .imm = 1,
+        .imm = (uint16_t)imm,
     };
     for (int i = 0; i < 6; i++) {
         hi.mac[i] = (uint8_t)m[i];
@@ -406,8 +415,8 @@ int main(int argc, char **argv)
         /* Idle */
         cpu_relax();
 
-        /* Receive completions, one per frame: due after each reply */
-        if (recvd < served || (spin & 0x1FFF) == 0) {
+        /* Receive completions, one per WRITE_WITH_IMM: due after each reply */
+        if (imm && (recvd < served || (spin & 0x1FFF) == 0)) {
             int n = ibv_poll_cq(rcq, 16, wc);
             if (n < 0) {
                 die("ibv_poll_cq");

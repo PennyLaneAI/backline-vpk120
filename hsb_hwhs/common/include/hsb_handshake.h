@@ -15,7 +15,8 @@
  *                    <---- hsb_hs_ready ---  the QP is ready
  *   4. reset HSB, program it over ECB from
  *      hsb_hs_host (hwhs_hsb_configure), run rounds
- *      rounds: HSB --UC WRITE_WITH_IMM--> ring slot; coprocessor --UC SEND--> HSB
+ *      rounds: HSB --UC WRITE (imm=0) or WRITE_WITH_IMM (imm=1)--> ring slot;
+ *      coprocessor --UC SEND--> HSB
  *   5. either side closes the socket to end the session
  *
  * HSB has no verbs, so the controller exchanges addresses for it and programs HSB over ECB.

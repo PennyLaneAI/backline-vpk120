@@ -18,8 +18,9 @@ IP. The images are built from source:
 
 One round: the A72 (or `transport_demo`, in hw-loop mode) puts a 64 B request in the slot RAM and
 starts the engine. hwhs stamps a sequence number into the request and hands it to HSB sensor-RX 0.
-HSB sends it to the coprocessor as a UC RDMA WRITE_WITH_IMM into its ring. The coprocessor answers
-with a UC SEND to QP 2. HSB delivers that payload on sensor-TX 0, and hwhs matches the sequence
+HSB sends it to the coprocessor as a UC RDMA WRITE into its ring, which needs the bitstream built
+with [`patches/0001`](patches/README.md); stock HSB sends a WRITE_WITH_IMM, which `hsb-echo -I` and
+`hsb-gpu-echo -I` ask for instead. The coprocessor answers with a UC SEND to QP 2. HSB delivers that payload on sensor-TX 0, and hwhs matches the sequence
 number and records the reply and the RTT.
 
 The A72 configures HSB with ECB packets (UDP 8192). Our mailbox

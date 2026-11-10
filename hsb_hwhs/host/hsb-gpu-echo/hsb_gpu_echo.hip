@@ -3,18 +3,20 @@
 /*
  * hsb-gpu-echo - GPU coprocessor test peer for backline-hsb (x86 host, AMD GPU, ConnectX NIC).
  *
- *   HSB --UC WRITE_WITH_IMM--> request ring in GPU HBM (dma-buf MR at IOVA 0)
+ *   HSB --UC WRITE--> request ring in GPU HBM (dma-buf MR at IOVA 0); the bitstream needs
+ *       patches/0001
  *   persistent kernel: polls each slot's seq, echoes, and publishes {correction, seq} into a
  *       host-mapped handoff ring
  *   CPU thread: posts each reply as an inline UC SEND to QP 2 (HSB sensor-TX 0)
  *
  * A lost frame stalls the session (hsb-echo resyncs instead).
  *
- *   hsb-gpu-echo -d mlx5_1 [-i ib_port] [-g gid_index] [-p tcp_port] [-G gpu] [-c cpu] [-r]
+ *   hsb-gpu-echo -d mlx5_1 [-i ib_port] [-g gid_index] [-p tcp_port] [-G gpu] [-c cpu] [-r] [-I]
  *
  *   -G  HIP device (default 0)
  *   -c  core of the CPU thread that posts the replies
  *   -r  realtime: SCHED_FIFO and /dev/cpu_dma_latency = 0 (needs root)
+ *   -I  ask for WRITE_WITH_IMM instead (stock HSB), which takes a receive per request
  *
  * Serves one session (common/include/hsb_handshake.h), then exits.
  */
@@ -158,9 +160,9 @@ __global__ void echo_kernel(volatile uint8_t *ring, volatile handoff_slot *hando
 int main(int argc, char **argv)
 {
     const char *devname = NULL;
-    int ib_port = 1, gid_index = 3, tcp_port = HSB_HS_PORT, gpu = 0, cpu = -1, rt = 0, c;
+    int ib_port = 1, gid_index = 3, tcp_port = HSB_HS_PORT, gpu = 0, cpu = -1, rt = 0, imm = 0, c;
 
-    while ((c = getopt(argc, argv, "d:i:g:p:G:c:r")) != -1) {
+    while ((c = getopt(argc, argv, "d:i:g:p:G:c:rI")) != -1) {
         switch (c) {
         case 'd': devname = optarg; break;
         case 'i': ib_port = atoi(optarg); break;
@@ -169,9 +171,10 @@ int main(int argc, char **argv)
         case 'G': gpu = atoi(optarg); break;
         case 'c': cpu = atoi(optarg); break;
         case 'r': rt = 1; break;
+        case 'I': imm = 1; break;
         default:
             fprintf(stderr, "usage: hsb-gpu-echo -d <ibdev> [-i ib_port] [-g gid_index] [-p tcp_port] "
-                            "[-G gpu] [-c cpu] [-r]\n");
+                            "[-G gpu] [-c cpu] [-r] [-I]\n");
             return 2;
         }
     }
@@ -260,7 +263,8 @@ int main(int argc, char **argv)
 
     /* ---- PD, CQs, UC QP, the HBM ring registered through dma-buf at IOVA 0 ---------- */
     struct ibv_pd *pd = ibv_alloc_pd(ctx);
-    struct ibv_cq *rcq = ibv_create_cq(ctx, MAX_RECV * 2, NULL, NULL, 0);
+    const unsigned recvs = imm ? MAX_RECV : 1;   /* only a WRITE_WITH_IMM takes a receive */
+    struct ibv_cq *rcq = ibv_create_cq(ctx, (int)recvs * 2, NULL, NULL, 0);
     struct ibv_cq *scq = ibv_create_cq(ctx, MAX_SEND * 2, NULL, NULL, 0);
     if (!pd || !rcq || !scq) die("pd/cq");
 
@@ -269,7 +273,7 @@ int main(int argc, char **argv)
     qia.send_cq = scq;
     qia.recv_cq = rcq;
     qia.cap.max_send_wr = MAX_SEND;
-    qia.cap.max_recv_wr = MAX_RECV;
+    qia.cap.max_recv_wr = recvs;
     qia.cap.max_send_sge = 1;
     qia.cap.max_recv_sge = 1;
     qia.cap.max_inline_data = 64;
@@ -291,7 +295,7 @@ int main(int argc, char **argv)
     a.qp_access_flags = IBV_ACCESS_REMOTE_WRITE;
     if (ibv_modify_qp(qp, &a, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS))
         die("QP -> INIT");
-    post_recvs(qp, MAX_RECV);
+    if (imm) post_recvs(qp, MAX_RECV);
 
     /* ---- handshake ------------------------------------------------------------------ */
     int ls = socket(AF_INET, SOCK_STREAM, 0), one = 1;
@@ -321,7 +325,7 @@ int main(int argc, char **argv)
     hi.ring_slots = RING_SLOTS;
     hi.ip = host_ip;
     for (int i = 0; i < 6; i++) hi.mac[i] = (uint8_t)m[i];
-    hi.imm = 1;
+    hi.imm = (uint16_t)imm;
     struct hsb_hs_fpga fo;
     if (write_full(fd, &hi, sizeof(hi)) || read_full(fd, &fo, sizeof(fo)) ||
         fo.magic != HSB_HS_MAGIC || fo.version != HSB_HS_VERSION) {
@@ -414,7 +418,7 @@ int main(int argc, char **argv)
 
         /* Idle */
         cpu_relax();
-        if (recvd < served) {   /* each frame's receive completion, due by now */
+        if (imm && recvd < served) {   /* each WRITE_WITH_IMM's receive completion, due by now */
             int n = ibv_poll_cq(rcq, 16, wc);
             if (n < 0) die("ibv_poll_cq");
             for (int i = 0; i < n; i++) {
