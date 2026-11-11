@@ -13,7 +13,7 @@ network IP.
 
 ## Licensing
 
-- `hw/` is Apache-2.0; see `hw/LICENSE`. `hw/rtl/hsb_cfg/HOLOLINK_def.svh` is adapted from NVIDIA's HSB
+- `hw/` is Apache-2.0; see `LICENSE`. `hw/rtl/hsb_cfg/HOLOLINK_def.svh` is adapted from NVIDIA's HSB
    configuration.
 - `third_party/hsb/` is NVIDIA's HSB IP under Apache-2.0; see `third_party/hsb/LICENSE`.
 
