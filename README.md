@@ -6,6 +6,7 @@ with its own README.
 | Folder | Network IP on the FPGA | Round engine | Catalyst backend |
 |---|---|---|---|
 | [`ernic_hwhs/`](ernic_hwhs/README.md) | AMD ERNIC | hwhs | `hwhs`, or `fpga_verbs` for the CPU-driven round |
+| [`hsb_hwhs/`](hsb_hwhs/README.md) | NVIDIA HSB | hwhs-hsb | `hsb_hwhs` |
 
 The controller sends each syndrome to a coprocessor over 100G RoCE v2 and times the round trip.
 ERNIC is AMD's RDMA NIC IP, which carries it.
@@ -23,5 +24,9 @@ Each folder is licensed on its own terms; see its README.
   - The software in `code/` is a fork of AMD's ERNIC software, under the AMD PetaLinux EULA and
     the open-source licenses of its parts.
   - Rebuilding needs AMD's ERNIC and 100G Multirate Ethernet MAC IP licenses.
+- **`hsb_hwhs/`**:
+  - The RTL in `hw/` is Apache-2.0.
+  - `third_party/hsb/` is NVIDIA's Holoscan Sensor Bridge IP under Apache-2.0.
 
 Versal, and Vivado, are trademarks of Advanced Micro Devices, Inc.
+NVIDIA and Holoscan are trademarks of NVIDIA Corporation.
