@@ -7,7 +7,7 @@
 #   lint  Verilator lint of backline_hsb_top
 #   sim   tb_hwhs_engine and tb_hwhs_hsb
 #
-# Needs Verilator >= 5.0.
+# Needs Verilator >= 5.048.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
