@@ -144,7 +144,7 @@ The address map is in the header of `hw/bd/platform.tcl`. The hwhs register map 
 
 ### Checks without Vivado (optional)
 
-- Verilator 5.0 or newer, and tclsh.
+- Verilator 5.048 or newer, and tclsh.
 
 ## Build the Images
 
