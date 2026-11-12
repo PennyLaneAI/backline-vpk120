@@ -57,43 +57,50 @@ module xpm_memory_tdpram #(
   output wire                                              sbiterrb,
   output wire                                              dbiterrb
 );
-  // storage in units of the narrower port
-  localparam integer WA = WRITE_DATA_WIDTH_A, WB = WRITE_DATA_WIDTH_B;
-  localparam integer UW = (WA < WB) ? WA : WB;
-  localparam integer DEPTH = MEMORY_SIZE / UW;
-  localparam integer RA = WA / UW, RB = WB / UW;      // units per word
-  localparam integer BA = BYTE_WRITE_WIDTH_A, BB = BYTE_WRITE_WIDTH_B;
+  // storage in units as wide as the narrower port; a port's word spans UNITS_PER_WORD_* units
+  localparam integer UNIT_WIDTH = (WRITE_DATA_WIDTH_A < WRITE_DATA_WIDTH_B) ? WRITE_DATA_WIDTH_A
+                                                                             : WRITE_DATA_WIDTH_B;
+  localparam integer UNITS            = MEMORY_SIZE / UNIT_WIDTH;
+  localparam integer UNITS_PER_WORD_A = WRITE_DATA_WIDTH_A / UNIT_WIDTH;
+  localparam integer UNITS_PER_WORD_B = WRITE_DATA_WIDTH_B / UNIT_WIDTH;
 
-  logic [UW-1:0] mem [0:DEPTH-1];
-  initial for (int i = 0; i < DEPTH; i++) mem[i] = '0;
+  logic [UNIT_WIDTH-1:0] mem [0:UNITS-1];
+  initial for (int i = 0; i < UNITS; i++) mem[i] = '0;
 
-  logic [WA-1:0] qa [0:READ_LATENCY_A-1];
-  logic [WB-1:0] qb [0:READ_LATENCY_B-1];
+  // read pipelines; the last stage drives the output
+  logic [WRITE_DATA_WIDTH_A-1:0] read_pipe_a [0:READ_LATENCY_A-1];
+  logic [WRITE_DATA_WIDTH_B-1:0] read_pipe_b [0:READ_LATENCY_B-1];
 
   always_ff @(posedge clka) begin
     if (ena) begin
-      for (int u = 0; u < RA; u++)
-        for (int b = 0; b < UW; b++)
-          if (wea[(u * UW + b) / BA]) mem[addra * RA + u][b] <= dina[u * UW + b];
-      for (int u = 0; u < RA; u++) qa[0][u * UW +: UW] <= mem[addra * RA + u];
+      for (int unit = 0; unit < UNITS_PER_WORD_A; unit++)
+        for (int i = 0; i < UNIT_WIDTH; i++)
+          if (wea[(unit * UNIT_WIDTH + i) / BYTE_WRITE_WIDTH_A])
+            mem[addra * UNITS_PER_WORD_A + unit][i] <= dina[unit * UNIT_WIDTH + i];
+      for (int unit = 0; unit < UNITS_PER_WORD_A; unit++)
+        read_pipe_a[0][unit * UNIT_WIDTH +: UNIT_WIDTH] <= mem[addra * UNITS_PER_WORD_A + unit];
     end
-    for (int s = 1; s < READ_LATENCY_A; s++) if (regcea || s != READ_LATENCY_A - 1) qa[s] <= qa[s - 1];
-    if (rsta) qa[READ_LATENCY_A - 1] <= '0;
+    for (int stage = 1; stage < READ_LATENCY_A; stage++)
+      if (regcea || stage != READ_LATENCY_A - 1) read_pipe_a[stage] <= read_pipe_a[stage - 1];
+    if (rsta) read_pipe_a[READ_LATENCY_A - 1] <= '0;
   end
 
   always_ff @(posedge clka) begin   // common clock
     if (enb) begin
-      for (int u = 0; u < RB; u++)
-        for (int b = 0; b < UW; b++)
-          if (web[(u * UW + b) / BB]) mem[addrb * RB + u][b] <= dinb[u * UW + b];
-      for (int u = 0; u < RB; u++) qb[0][u * UW +: UW] <= mem[addrb * RB + u];
+      for (int unit = 0; unit < UNITS_PER_WORD_B; unit++)
+        for (int i = 0; i < UNIT_WIDTH; i++)
+          if (web[(unit * UNIT_WIDTH + i) / BYTE_WRITE_WIDTH_B])
+            mem[addrb * UNITS_PER_WORD_B + unit][i] <= dinb[unit * UNIT_WIDTH + i];
+      for (int unit = 0; unit < UNITS_PER_WORD_B; unit++)
+        read_pipe_b[0][unit * UNIT_WIDTH +: UNIT_WIDTH] <= mem[addrb * UNITS_PER_WORD_B + unit];
     end
-    for (int s = 1; s < READ_LATENCY_B; s++) if (regceb || s != READ_LATENCY_B - 1) qb[s] <= qb[s - 1];
-    if (rstb) qb[READ_LATENCY_B - 1] <= '0;
+    for (int stage = 1; stage < READ_LATENCY_B; stage++)
+      if (regceb || stage != READ_LATENCY_B - 1) read_pipe_b[stage] <= read_pipe_b[stage - 1];
+    if (rstb) read_pipe_b[READ_LATENCY_B - 1] <= '0;
   end
 
-  assign douta = qa[READ_LATENCY_A - 1];
-  assign doutb = qb[READ_LATENCY_B - 1];
+  assign douta = read_pipe_a[READ_LATENCY_A - 1];
+  assign doutb = read_pipe_b[READ_LATENCY_B - 1];
   assign sbiterra = 1'b0;
   assign dbiterra = 1'b0;
   assign sbiterrb = 1'b0;
@@ -137,23 +144,25 @@ module xpm_memory_sdpram #(
   output wire                                              sbiterrb,
   output wire                                              dbiterrb
 );
-  localparam integer W = WRITE_DATA_WIDTH_A, B = BYTE_WRITE_WIDTH_A;
+  localparam integer WORDS = MEMORY_SIZE / WRITE_DATA_WIDTH_A;
 
-  logic [W-1:0] mem [0:MEMORY_SIZE/W-1];
-  initial for (int i = 0; i < MEMORY_SIZE / W; i++) mem[i] = '0;
+  logic [WRITE_DATA_WIDTH_A-1:0] mem [0:WORDS-1];
+  initial for (int i = 0; i < WORDS; i++) mem[i] = '0;
 
-  logic [W-1:0] qb [0:READ_LATENCY_B-1];
+  // read pipeline; the last stage drives the output
+  logic [WRITE_DATA_WIDTH_A-1:0] read_pipe_b [0:READ_LATENCY_B-1];
 
   always_ff @(posedge clka) begin   // common clock
     if (ena)
-      for (int b = 0; b < W; b++)
-        if (wea[b / B]) mem[addra][b] <= dina[b];
-    if (enb) qb[0] <= mem[addrb];
-    for (int s = 1; s < READ_LATENCY_B; s++) if (regceb || s != READ_LATENCY_B - 1) qb[s] <= qb[s - 1];
-    if (rstb) qb[READ_LATENCY_B - 1] <= '0;
+      for (int i = 0; i < WRITE_DATA_WIDTH_A; i++)
+        if (wea[i / BYTE_WRITE_WIDTH_A]) mem[addra][i] <= dina[i];
+    if (enb) read_pipe_b[0] <= mem[addrb];
+    for (int stage = 1; stage < READ_LATENCY_B; stage++)
+      if (regceb || stage != READ_LATENCY_B - 1) read_pipe_b[stage] <= read_pipe_b[stage - 1];
+    if (rstb) read_pipe_b[READ_LATENCY_B - 1] <= '0;
   end
 
-  assign doutb = qb[READ_LATENCY_B - 1];
+  assign doutb = read_pipe_b[READ_LATENCY_B - 1];
   assign sbiterrb = 1'b0;
   assign dbiterrb = 1'b0;
 endmodule
@@ -169,9 +178,9 @@ module xpm_cdc_single #(
   input  wire dest_clk,
   output wire dest_out
 );
-  logic [DEST_SYNC_FF-1:0] s = '0;
-  always_ff @(posedge dest_clk) s <= {s[DEST_SYNC_FF-2:0], src_in};
-  assign dest_out = s[DEST_SYNC_FF-1];
+  logic [DEST_SYNC_FF-1:0] sync = '0;
+  always_ff @(posedge dest_clk) sync <= {sync[DEST_SYNC_FF-2:0], src_in};
+  assign dest_out = sync[DEST_SYNC_FF-1];
 endmodule
 
 module xpm_cdc_array_single #(
@@ -186,11 +195,11 @@ module xpm_cdc_array_single #(
   input  wire             dest_clk,
   output wire [WIDTH-1:0] dest_out
 );
-  logic [WIDTH-1:0] s [DEST_SYNC_FF];
-  initial for (int i = 0; i < DEST_SYNC_FF; i++) s[i] = '0;
+  logic [WIDTH-1:0] sync [DEST_SYNC_FF];
+  initial for (int i = 0; i < DEST_SYNC_FF; i++) sync[i] = '0;
   always_ff @(posedge dest_clk) begin
-    s[0] <= src_in;
-    for (int i = 1; i < DEST_SYNC_FF; i++) s[i] <= s[i - 1];
+    sync[0] <= src_in;
+    for (int i = 1; i < DEST_SYNC_FF; i++) sync[i] <= sync[i - 1];
   end
-  assign dest_out = s[DEST_SYNC_FF-1];
+  assign dest_out = sync[DEST_SYNC_FF-1];
 endmodule

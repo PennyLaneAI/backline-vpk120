@@ -9,7 +9,8 @@
 /// Register map (byte offsets):
 ///------------------------------------------------------------------------------
 ///   0x00 CTRL        W1P [0]=start (one sw-loop round)
-///                    RW  [1]=abort       (level: engine back to IDLE and held there)
+///                    RW  [1]=abort       (level: engine back to IDLE once its AXIS handshakes finish,
+///                                         and held there)
 ///                    RW  [2]=soft_reset  (level: engine state and counters held at reset)
 ///   0x04 STATUS      RO  [3:0]=state [4]=busy [5]=done [6]=reply_seen [7]=timeout
 ///                        [16]=hsb_init_done [17]=demo_run [18]=ecb_rx_valid [31:24]=DONE_CNT[7:0]

@@ -15,7 +15,7 @@ module tb_hwhs_engine;
   localparam int SEQ_OFF  = 12;
   localparam int LANE     = SEQ_OFF / 4;
   localparam logic [3:0] S_IDLE = 4'd0, S_SEND = 4'd3, S_WAIT = 4'd4, S_DEMO_RX = 4'd5,
-                         S_DONE = 4'd7;
+                         S_DEMO_FWD = 4'd6, S_DONE = 4'd7;
 
   logic clk = 1'b0;
   always #2000 clk = ~clk;
@@ -237,7 +237,7 @@ module tb_hwhs_engine;
   initial begin
     bit                 to;
     logic [BEAT_DW-1:0] beat;
-    logic [31:0]        done0, seq0, stale0, rx0, rounds0, to0;
+    logic [31:0]        done0, seq0, stale0, rx0, tx0, rounds0, to0;
 
     for (int i = 0; i < SLOTS; i++) begin
       slot_mem[i]  = '0;
@@ -418,6 +418,37 @@ module tb_hwhs_engine;
     reply_to = 32'd2000;
     sw_round_ok(81, "the round after abort");
 
+    $display("-- abort while HSB holds sif_rx_tready low: the request goes out first");
+    @(negedge clk);
+    sif_rx_tready = 1'b0;
+    begin
+      int idx;
+      idx    = int'(sts_ring_idx);
+      done0  = sts_done_cnt;
+      stale0 = sts_stale_cnt;
+      seq0   = sts_next_seq;
+      slot_mem[idx] = req(82);
+      tick(3);
+      pulse_start();
+      tick(20);
+      check(u_dut.state == S_SEND && sif_rx_tvalid, "waiting in SEND");
+      @(negedge clk);
+      abort = 1'b1;
+      @(negedge clk);
+      abort = 1'b0;                                   // a pulse, as the driver writes it
+      tick(20);
+      check(u_dut.state == S_SEND && sif_rx_tvalid && sts_busy, "abort waits in SEND");
+      @(negedge clk);
+      sif_rx_tready = 1'b1;
+      tick(3);
+      check(u_dut.state == S_IDLE && !sts_busy, "then back in IDLE");
+      check(last_req[63:0] == req(82)[63:0] && sts_next_seq == seq0 + 1, "the request went out with its seq");
+      tick(reply_delay + 10);
+      check(sts_done_cnt == done0 && sts_stale_cnt == stale0 + 1, "its reply is stale; no round ended");
+      check(int'(sts_ring_idx) == idx, "abort keeps RING_IDX");
+    end
+    sw_round_ok(83, "the round after abort in SEND");
+
     $display("-- CPU writes during a round take effect at once");
     reply_delay = 200;
     begin
@@ -524,6 +555,40 @@ module tb_hwhs_engine;
     demo_run = 1'b0;
     tick(3);
     check(u_dut.state == S_IDLE && !sts_busy && !s_axis_tready, "back in IDLE");
+
+    $display("-- abort in the cycle s_axis hands over a request: the request is kept");
+    @(negedge clk);
+    demo_run = 1'b1;
+    tick(3);
+    check(u_dut.state == S_DEMO_RX && s_axis_tready, "offering s_axis");
+    tx0 = sts_tx_cnt;
+    s_axis_tdata  = req(203);
+    s_axis_tvalid = 1'b1;
+    abort         = 1'b1;
+    @(negedge clk);                                   // the handshake and the abort, same edge
+    s_axis_tvalid = 1'b0;
+    abort         = 1'b0;
+    demo_run      = 1'b0;                             // hwhs.v clears demo_run on abort
+    tick(5);
+    check(sts_tx_cnt == tx0 + 1 && last_req[63:0] == req(203)[63:0], "the request went to HSB");
+    check(u_dut.state == S_IDLE && !sts_busy, "then back in IDLE");
+    tick(reply_delay + 10);                           // its reply comes back stale
+
+    $display("-- abort while transport_demo holds m_axis_tready low: the reply goes back first");
+    @(negedge clk);
+    demo_run = 1'b1;
+    demo_send(req(204));
+    while (u_dut.state != S_DEMO_FWD) @(negedge clk);
+    abort = 1'b1;
+    @(negedge clk);
+    abort    = 1'b0;
+    demo_run = 1'b0;
+    tick(20);
+    check(u_dut.state == S_DEMO_FWD && m_axis_tvalid, "abort waits in DEMO_FWD");
+    demo_recv(0, beat);
+    check(beat[63:0] == req(204)[63:0], "the reply was handed over");
+    tick(3);
+    check(u_dut.state == S_IDLE && !sts_busy && !s_axis_tready, "then back in IDLE");
 
     $display("-- RTT trace: saturation, then full");
     @(negedge clk);

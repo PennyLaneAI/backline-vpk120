@@ -23,6 +23,9 @@
 //   hw-loop (transport_demo drives s_axis while demo_run is set):
 //     IDLE --demo_run--> DEMO_RX -> SEND -> WAIT --reply--> DEMO_FWD -> DONE
 //
+// abort sends the FSM back to IDLE and holds it there. A beat already offered on sif_rx or m_axis,
+// or taken from s_axis, is handed over first, so abort waits out SEND and DEMO_FWD.
+//
 // RTT (hif cycles):
 //   sw-loop: from START accepted to the reply beat
 //   hw-loop: from the s_axis handshake to the m_axis handshake
@@ -143,6 +146,7 @@ module hwhs_engine #(
     reg  [C_SLOT_AW-1:0]  ring_idx;     // slot of this round (or of the next one)
     reg  [31:0]           next_seq;     // seq the next request carries
     reg                   start_pend;   // a START not taken yet
+    reg                   abort_pend;   // an abort waiting for a handshake
     reg                   demo_act;     // this round came from transport_demo
     reg                   round_ok;     // this round ended with its reply
     reg  [31:0]           to_cnt;       // cycles spent in WAIT
@@ -167,12 +171,16 @@ module hwhs_engine #(
     // ------------------------------------------------------------ //
     // Events
     // ------------------------------------------------------------ //
-    wire go          = !abort;
+    wire s_axis_hs   = (state == S_DEMO_RX) && s_axis_tready && s_axis_tvalid;
+    wire in_xfer     = (state == S_SEND) || (state == S_DEMO_FWD) || s_axis_hs;
+    wire abort_req   = abort || abort_pend;
+    wire halt        = abort_req && !in_xfer;                          // abort takes effect
+    wire go          = !halt;
     wire idle        = go && (state == S_IDLE);
     wire sw_begin    = idle && (start || start_pend);                 // a sw-loop round starts
     wire hw_begin    = idle && !(start || start_pend) && demo_run;    // offer s_axis one request
-    wire hw_stop     = go && (state == S_DEMO_RX) && !demo_run;       // demo ended before a request came
-    wire hw_take     = go && (state == S_DEMO_RX) && demo_run && s_axis_tready && s_axis_tvalid;
+    wire hw_stop     = go && (state == S_DEMO_RX) && !demo_run && !s_axis_hs; // demo ended before a request came
+    wire hw_take     = go && s_axis_hs;
     wire req_load    = (go && (state == S_RD2)) || hw_take;           // the request beat is formed
     wire req_sent    = go && (state == S_SEND) && sif_rx_tvalid && sif_rx_tready;
 
@@ -190,7 +198,7 @@ module hwhs_engine #(
     // FSM
     // ------------------------------------------------------------ //
     always @(posedge clk) begin
-        if (rst || abort) state <= S_IDLE;
+        if (rst || halt) state <= S_IDLE;
         else case (state)
             S_IDLE:     state <= sw_begin ? S_RD : hw_begin ? S_DEMO_RX : S_IDLE;
             S_RD:       state <= S_RD2;    // slot RAM read latency: hwhs_ram RD_LATENCY = 2
@@ -212,26 +220,28 @@ module hwhs_engine #(
     always @(posedge clk) begin
         if (rst) begin
             start_pend    <= 1'b0;
+            abort_pend    <= 1'b0;
             demo_act      <= 1'b0;
             s_axis_tready <= 1'b0;
             sif_rx_tvalid <= 1'b0;
             next_seq      <= 32'd1;
             ring_idx      <= {C_SLOT_AW{1'b0}};
         end else begin
-            if (abort || sw_begin) start_pend <= 1'b0;
-            else if (start)        start_pend <= 1'b1;
+            if (abort_req || sw_begin) start_pend <= 1'b0;
+            else if (start)            start_pend <= 1'b1;
+
+            if (halt)       abort_pend <= 1'b0;
+            else if (abort) abort_pend <= 1'b1;
 
             if (sw_begin)      demo_act <= 1'b0;
             else if (hw_begin) demo_act <= 1'b1;
             else if (hw_stop)  demo_act <= 1'b0;
 
-            if (abort || hw_stop || hw_take) s_axis_tready <= 1'b0;
-            else if (hw_begin)               s_axis_tready <= 1'b1;
+            if (halt || hw_stop || hw_take) s_axis_tready <= 1'b0;
+            else if (hw_begin)              s_axis_tready <= 1'b1;
 
-            // abort drops a pending request without its handshake
-            // TODO: should respect AXIS standard
-            if (abort || req_sent) sif_rx_tvalid <= 1'b0;
-            else if (req_load)     sif_rx_tvalid <= 1'b1;
+            if (req_sent)      sif_rx_tvalid <= 1'b0;
+            else if (req_load) sif_rx_tvalid <= 1'b1;
 
             if (req_sent && seq_stamp) next_seq <= next_seq + 32'd1;
             else if (seq_wr)           next_seq <= seq_wdata;
@@ -270,9 +280,7 @@ module hwhs_engine #(
 
             reply_we <= got_reply;    // one cycle, while ring_idx still points at this round
 
-            // abort drops a pending reply without its handshake
-            // TODO: should respect AXIS standard
-            if (abort || fwd_done)           m_axis_tvalid <= 1'b0;
+            if (fwd_done)                    m_axis_tvalid <= 1'b0;
             else if (round_over && demo_act) m_axis_tvalid <= 1'b1;
         end
     end
@@ -308,7 +316,7 @@ module hwhs_engine #(
             sts_state <= state;
 
             if (sw_begin || hw_begin)                       sts_busy <= 1'b1;
-            else if (abort || hw_stop || round_end || idle) sts_busy <= 1'b0;
+            else if (halt || hw_stop || round_end || idle)  sts_busy <= 1'b0;
 
             // per-round flags, cleared when a round takes its request
             if (sw_begin || hw_take) begin

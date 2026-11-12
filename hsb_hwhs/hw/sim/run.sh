@@ -14,6 +14,12 @@ REPO="$(cd "$HERE/../.." && pwd)"
 OUT="${OUT:-$REPO/build/sim}"
 mkdir -p "$OUT"
 
+VER="$(verilator --version | awk '{print $2}')"
+if [ "$(printf '%s\n' 5.048 "$VER" | sort -V | head -1)" != 5.048 ]; then
+    echo "run.sh needs Verilator 5.048 or newer, found $VER" >&2
+    exit 1
+fi
+
 HSB="$REPO/third_party/hsb/nv_hsb_ip"
 { ls "$HSB"/*/*pkg.sv; ls "$HSB"/*/*.sv | grep -v 'pkg\.sv$'; } > "$OUT/hsb.f"
 RTL=("$REPO"/hw/rtl/hwhs/*.v)
