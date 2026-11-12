@@ -31,7 +31,7 @@ Individual subsystems within this folder are licensed under their respective dir
 
 - **AMD Vivado License:** Must include support for Versal Premium devices (VPK120).
 - **Reference Design Sources:** The AMD ERNIC MRMAC reference design remains the
-  intellectual property of Advanced Micro Devices, Inc. Users must download it directly from AMD. Users must source the package directly from AMD. `make amd` unpacks the parts the build reads into `build/amd`:
+  intellectual property of Advanced Micro Devices, Inc. Users must download it directly from AMD. `make amd` unpacks the parts the build reads into `build/amd`:
   - for Vivado: the CIPS, NoC and MRMAC Tcl, the MRMAC example design RTL, the clock wizard and the XDCs;
   - for PetaLinux: the BSP and the VPK120 rev B board device tree (`versal-vpk120-revB.dtsi`,
     GPL-2.0, © Xilinx). `sw/petalinux/build.sh` copies the dtsi into the image's device-tree

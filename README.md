@@ -30,6 +30,8 @@ Each folder is licensed on its own terms; see its README.
   - HSB is Apache-2.0, © NVIDIA, vendored unmodified in `hsb_hwhs/third_party/hsb`.
   - No AMD file is in the folder: `make amd` unpacks the parts of AMD's download that the build
     reads, the board device tree included, into `build/`.
-  - No ERNIC license is needed.
+  - Rebuilding needs AMD's 100G Multirate Ethernet MAC IP license. The design does not use the
+    ERNIC IP, so it needs no ERNIC IP license, but it does need AMD's ERNIC reference design,
+    which AMD provides on its own terms.
 
 Versal, and Vivado, are trademarks of Advanced Micro Devices, Inc.
