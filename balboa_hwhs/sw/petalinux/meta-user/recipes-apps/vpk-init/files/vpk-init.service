@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Xanadu Quantum Technologies Inc.
+[Unit]
+Description=VPK120 backline-roce setup
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/vpk-init.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
