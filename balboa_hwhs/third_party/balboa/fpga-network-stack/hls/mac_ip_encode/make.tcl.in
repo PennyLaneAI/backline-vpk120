@@ -1,0 +1,21 @@
+open_project ${PROJECT_NAME}_prj
+open_solution "solution1"
+set_part ${FPGA_PART}
+
+create_clock -period ${CLOCK_PERIOD} -name default
+set_clock_uncertainty ${CLOCK_UNCERTAINTY} default
+
+set_top ${PROJECT_NAME}_top
+
+add_files ${CMAKE_CURRENT_SOURCE_DIR}/../ipv4/ipv4_utils.cpp
+add_files ${CMAKE_CURRENT_SOURCE_DIR}/mac_ip_encode.cpp -cflags "-I${CMAKE_CURRENT_BINARY_DIR}"
+
+config_rtl -reset all -reset_level low
+
+csynth_design
+export_design -format ip_catalog -ipname "mac_ip_encode" -display_name "MAC IP Encoder" -vendor "ethz.systems.fpga" -version "2.0"
+file mkdir ${IPREPO_DIR}
+file delete -force ${IPREPO_DIR}/${PROJECT_NAME}
+file copy -force ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}_prj/solution1/impl/ip ${IPREPO_DIR}/${PROJECT_NAME}/
+
+exit
