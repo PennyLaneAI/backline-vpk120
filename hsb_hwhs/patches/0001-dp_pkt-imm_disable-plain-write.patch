@@ -1,0 +1,87 @@
+From fc0690dcaaeca6faeeecd0dd61a4b15ae519d354 Mon Sep 17 00:00:00 2001
+From: Hongsheng Zheng <hongsheng.zheng@xanadu.ai>
+Date: Fri, 6 Nov 2026 18:03:44 -0500
+Subject: [PATCH] dp_pkt: let imm_disable send the last packet as a plain WRITE
+
+Bit 17 of the host UDP port word, next to md_disable, turns the
+WRITE_WITH_IMM that ends each frame into a plain UC RDMA WRITE when
+metadata is off. The receiver then needs no receive WQE per frame.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ dp_pkt/dp_pkt_top.sv | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/dp_pkt/dp_pkt_top.sv b/dp_pkt/dp_pkt_top.sv
+index b9c45a6..049eda6 100755
+--- a/dp_pkt/dp_pkt_top.sv
++++ b/dp_pkt/dp_pkt_top.sv
+@@ -228,7 +228,7 @@ dp_pkt_ts # (
+   // [8] : host_mac_lo        [31:0]
+   // [9] : host_mac_hi        [15:0]
+   // [A] : host_ip_addr       [31:0]
+-  // [B] : md_disable, host_udp_port [15:0]
++  // [B] : imm_disable [17], md_disable [16], host_udp_port [15:0]
+   // [C] : roce_buf_fixed_msb [31:0]
+   // [D] : vlan_en,pcp,vlan_id [31:0]
+   // [E] : RSVD               [31:0]
+@@ -397,6 +397,7 @@ logic                 nxt_pkt_le;
+ logic                 threshold_val;
+ logic                 single_pkt;
+ logic                 md_disable;
++logic                 imm_disable; // with md_disable: the last packet is a plain WRITE, not WRITE_WITH_IMM
+ logic                 is_first_run;
+ 
+ assign is_first_run    = !sts_ram_data[0];
+@@ -438,6 +439,7 @@ roce_fsm_t roce_state;
+ logic [23:0]       roce_dest_qp;
+ logic [N_INPT-1:0] sensor_is_1722b;
+ logic [N_INPT-1:0] sensor_is_md_disable;
++logic [N_INPT-1:0] sensor_is_imm_disable;
+ logic [31:0]       rkey;
+ logic [31:0]       roce_buf_fixed_msb;
+ logic [25:0]       roce_buf_inc;
+@@ -458,15 +460,18 @@ always_ff @(posedge i_pclk) begin
+   if (i_prst) begin
+     sensor_is_1722b <= '0;
+     sensor_is_md_disable <= '0;
++    sensor_is_imm_disable <= '0;
+   end
+   else begin
+     if (BUFFER_4K_REG) begin
+       sensor_is_1722b[sif_gnt_idx_r]      <= (cfg_ram_rd_valid && (cfg_ram_addr[3:0] == 4'h5)) ? cfg_ram_data[24] : sensor_is_1722b[sif_gnt_idx_r];
+       sensor_is_md_disable[sif_gnt_idx_r] <= (cfg_ram_rd_valid && (cfg_ram_addr[3:0] == 4'h9)) ? cfg_ram_data[16] : sensor_is_md_disable[sif_gnt_idx_r];
++      sensor_is_imm_disable[sif_gnt_idx_r] <= (cfg_ram_rd_valid && (cfg_ram_addr[3:0] == 4'h9)) ? cfg_ram_data[17] : sensor_is_imm_disable[sif_gnt_idx_r];
+     end
+     else begin
+       sensor_is_1722b[sif_gnt_idx_r]      <= (cfg_ram_rd_valid && (cfg_ram_addr[3:0] == 4'h2)) ? cfg_ram_data[24] : sensor_is_1722b[sif_gnt_idx_r];
+       sensor_is_md_disable[sif_gnt_idx_r] <= (cfg_ram_rd_valid && (cfg_ram_addr[3:0] == 4'hA)) ? cfg_ram_data[16] : sensor_is_md_disable[sif_gnt_idx_r];
++      sensor_is_imm_disable[sif_gnt_idx_r] <= (cfg_ram_rd_valid && (cfg_ram_addr[3:0] == 4'hA)) ? cfg_ram_data[17] : sensor_is_imm_disable[sif_gnt_idx_r];
+     end
+   end
+ end
+@@ -813,7 +818,7 @@ always_ff @(posedge i_pclk) begin
+     crc_ram_wren        <= crc_valid[hif_gnt_idx_r];
+   end
+   else begin
+-    is_data_wr_imm <= md_disable ? (is_last || single_pkt) : '0;
++    is_data_wr_imm <= md_disable ? ((is_last || single_pkt) && !imm_disable) : '0;
+     crc_ram_wren   <= 1'b0;
+     case (roce_state)
+       ROCE_IDLE: begin
+@@ -1004,6 +1009,7 @@ always_ff @(posedge i_pclk) begin
+     roce_buf_addr             <= '0;
+     roce_nxt_vaddr2           <= '0;
+     md_disable                <= '0;
++    imm_disable               <= '0;
+   end
+   else if (!calc_hold) begin
+     roce_buf_offset           <= (BUFFER_4K_REG) ? (roce_buf_inc * buf_ptr) : '0;
+@@ -1018,6 +1024,7 @@ always_ff @(posedge i_pclk) begin
+     le_last                   <= roce_buf_len[threshold_idx] != roce_vaddr[r_threshold_idx];
+     pkt_is_1722b              <= sensor_is_1722b[sif_gnt_idx_r];
+     md_disable                <= sensor_is_md_disable[sif_gnt_idx_r];
++    imm_disable               <= sensor_is_imm_disable[sif_gnt_idx_r];
+     roce_nxt_vaddr            <= roce_vaddr + (cur_pkt_len_pages + round_cur_pkt_len); // Round Up
+     roce_nxt_vaddr2           <= roce_vaddr + (cur_pkt_len_pages<<1);
+     cur_pkt_len               <= single_pkt ? (cycle_32byte) ? 'd1 : (roce_buf_len >> BYTES_TO_CYCLES) : (is_last && !is_new) ? roce_len_left : pkt_len;
