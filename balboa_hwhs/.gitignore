@@ -1,0 +1,7 @@
+build/
+*.jou
+*.log
+.Xil/
+host/balboa-echo/balboa-echo
+host/balboa-gpu-echo/balboa-gpu-echo
+host/balboa-standin/balboa-standin
