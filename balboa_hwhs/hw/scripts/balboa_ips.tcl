@@ -12,7 +12,7 @@
 proc balboa_create_ips {} {
     # Vivado IP, as Coyote configures it. axis_data_fifo_512: depth n_outs (8) x PMTU (4096) / 64.
     set ips {
-        axis_data_fifo          2.0 axis_data_fifo_512_cc_tx    {CONFIG.TDATA_NUM_BYTES {64} CONFIG.IS_ACLK_ASYNC {0} CONFIG.HAS_TKEEP {1} CONFIG.HAS_TLAST {1}}
+        axis_data_fifo          2.0 axis_data_fifo_512_cc_tx    {CONFIG.TDATA_NUM_BYTES {64} CONFIG.FIFO_DEPTH {512} CONFIG.IS_ACLK_ASYNC {0} CONFIG.HAS_TKEEP {1} CONFIG.HAS_TLAST {1}}
         axis_data_fifo          2.0 axis_data_fifo_512          {CONFIG.TDATA_NUM_BYTES {64} CONFIG.FIFO_DEPTH {512} CONFIG.HAS_TKEEP {1} CONFIG.HAS_TLAST {1}}
         axis_data_fifo          2.0 axis_data_fifo_meta_96      {CONFIG.TDATA_NUM_BYTES {12} CONFIG.FIFO_DEPTH {32}}
         axis_data_fifo          2.0 axis_data_fifo_meta_128     {CONFIG.TDATA_NUM_BYTES {16} CONFIG.FIFO_DEPTH {32}}

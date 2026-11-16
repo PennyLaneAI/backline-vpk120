@@ -109,7 +109,7 @@ endmodule
 `XIP_META_FIFO(axis_data_fifo_meta_96, 96, 32)
 `XIP_META_FIFO(axis_data_fifo_meta_128, 128, 32)
 `XIP_DATA_FIFO(axis_data_fifo_512, 512)
-`XIP_DATA_FIFO(axis_data_fifo_512_cc_tx, 16)
+`XIP_DATA_FIFO(axis_data_fifo_512_cc_tx, 512)
 
 // ---- register slices -----------------------------------------------------------------------
 
