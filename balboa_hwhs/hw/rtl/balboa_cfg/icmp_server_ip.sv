@@ -9,7 +9,8 @@
 // ports. It answers echo requests only: the reply is the request with the IP
 // addresses swapped, ICMP type 0 and the ICMP checksum adjusted for that (RFC 1624). The IP
 // checksum does not change, since swapping the addresses keeps their sum. Everything else
-// (other ICMP types, IP options, UDP and TTL inputs) is dropped.
+// (other ICMP types, IP options, UDP and TTL inputs) is dropped. The request's ICMP checksum is
+// assumed correct and not checked.
 //
 // The stream is the IP packet, 8 bytes per beat, byte 0 in bits [7:0]:
 //
