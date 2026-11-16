@@ -9,7 +9,7 @@
 // are served round-robin. The output is registered: one cycle from input to output, a beat every
 // cycle. All ports run on ACLK; the per-port clocks and resets and ARB_REQ_SUPPRESS are not used.
 
-`timescale 1ns / 1ps
+`timescale 1ps / 1ps
 
 module axis_pkt_merge #(
   parameter int N = 2

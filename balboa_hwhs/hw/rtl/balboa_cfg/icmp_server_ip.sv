@@ -22,7 +22,7 @@
 // The first three beats are held until beat 2 shows the type, then go out rewritten.
 //
 //===----------------------------------------------------------------------===//
-`timescale 1ns / 1ps
+`timescale 1ps / 1ps
 
 module icmp_server_ip (
   input  logic        ap_clk,

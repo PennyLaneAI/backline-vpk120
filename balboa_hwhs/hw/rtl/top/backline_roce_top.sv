@@ -27,7 +27,7 @@
 `define NET_CLK_FREQ 250000000
 `endif
 
-`timescale 1ps/1ps
+`timescale 1ps / 1ps
 `default_nettype none
 
 (* DowngradeIPIdentifiedWarnings="yes" *)

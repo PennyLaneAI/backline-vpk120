@@ -20,7 +20,7 @@
 // Everything runs on one clock: BALBOA's HLS cores are synthesized for it (NET_MHZ).
 //
 //===----------------------------------------------------------------------===//
-`timescale 1ns / 1ps
+`timescale 1ps / 1ps
 
 module balboa_net
   import lynxTypes::*;

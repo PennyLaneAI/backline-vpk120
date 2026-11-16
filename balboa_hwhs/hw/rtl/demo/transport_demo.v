@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Xanadu Quantum Technologies Inc.
-`timescale 1ns / 10ps
+`timescale 1ps / 1ps
 `default_nettype none
 
 module transport_demo #(
