@@ -16,19 +16,20 @@ each that the backline-roce build compiles, unmodified.
 - `coyote/`: `LICENSE.md`; `hw/hdl/network/stack/network_stack.sv`; `hw/hdl/network/rdma/roce_stack.sv`
   and the modules under it; the queues, registers and RAM those use; `hw/hdl/pkg/`;
   `hw/templates/common/lynx_pkg_tmplt.txt`.
-- `fpga-network-stack/`: the HLS cores `rocev2`, `ip_handler`, `mac_ip_encode` and
-  `arp_server_subnet` (sources, config templates, `make.tcl.in`), and what they include or compile
-  with: `axi_utils`, `packet.hpp`, `ethernet/`, `ipv4/`, `ipv6/`, `udp/`, `crc/`,
-  `ib_transport_protocol/`.
+- `fpga-network-stack/`: `LICENSE.md`, from upstream `master` (see Licenses); the HLS cores
+  `rocev2`, `ip_handler`, `mac_ip_encode` and `arp_server_subnet` (sources, config templates,
+  `make.tcl.in`), and what they include or compile with: `axi_utils`, `packet.hpp`, `ethernet/`,
+  `ipv4/`, `ipv6/`, `udp/`, `crc/`, `ib_transport_protocol/`.
 
 ## Licenses
 
 - `coyote/` is MIT, © ETH Zurich (`coyote/LICENSE.md`). The artifact's README says the CREED code
   inside Coyote is under the same license.
-- `fpga-network-stack/` has no license file. Each `.cpp` and `.hpp` carries a BSD-3-Clause header,
-  © 2018-2019 Systems Group, ETH Zurich. The `ip_handler`, `mac_ip_encode` and
-  `arp_server_subnet` sources also name Xilinx, Inc. (2016) as a copyright holder, under the same
-  BSD-3-Clause terms. The config templates and `make.tcl.in` files have no header.
+- `fpga-network-stack/` is BSD-3-Clause which `fpga-network-stack/LICENSE.md` is a copy of the one on
+  upstream `master` at `bccf1a83ddf16f922270437381e0bb0b8c995d34`, © 2016 Xilinx, Inc. Each `.cpp` and `.hpp` also
+  carries a BSD-3-Clause header, © 2018-2019 Systems Group, ETH Zurich. The `ip_handler`,
+  `mac_ip_encode` and `arp_server_subnet` sources also name Xilinx, Inc. (2016) as a copyright
+  holder, under the same BSD-3-Clause terms.
 
 ## Not taken
 
@@ -69,8 +70,9 @@ The manifest is the file list:
 cd third_party/balboa
 awk '{print $2}' MANIFEST.sha256 | sed -n 's|^coyote/||p' | \
     xargs git -C <path/to/Coyote> archive --format=tar 15e5f5905051c3800d81720ecd5f53d7ab44116f | tar -x -C coyote
-awk '{print $2}' MANIFEST.sha256 | sed -n 's|^fpga-network-stack/||p' | \
+awk '{print $2}' MANIFEST.sha256 | sed -n 's|^fpga-network-stack/||p' | grep -vx LICENSE.md | \
     xargs git -C <path/to/fpga-network-stack> archive --format=tar 1197a9dfa172b34c50ad5ee0a418a53fdddff146 | tar -x -C fpga-network-stack
+git -C <path/to/fpga-network-stack> show bccf1a83ddf16f922270437381e0bb0b8c995d34:LICENSE.md > fpga-network-stack/LICENSE.md
 ```
 
 After adding or removing files, regenerate the manifest:
