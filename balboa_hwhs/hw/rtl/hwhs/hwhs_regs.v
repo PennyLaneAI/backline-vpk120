@@ -44,7 +44,7 @@
 ///   0x8C LOCAL_MAC_LO RW the stack's MAC [31:0]  (0x0293C6484D8E = 02:93:c6:48:4d:8e)
 ///   0x90 LOCAL_MAC_HI RW                [15:0]  (set_mac applies both)
 ///   0x94 ARP_IP      RW  IPv4 address arp_lookup resolves
-///   0x98 LOCAL_QPN   RW  [15:0] the QP the requests go out on, {vfid[3:0], pid[5:0]} (default 2)
+///   0x98 LOCAL_QPN   RW  [15:0] the QP the requests go out on, {vfid[3:0], pid[5:0]} (default 0)
 ///   0x9C REQ_LEN     RW  bytes of the slot each request carries, 1..64 (default 64)
 ///   0xA0 RMT_BASE_LO RW  coprocessor ring, address of slot 0 [31:0]
 ///   0xA4 RMT_BASE_HI RW                                     [63:32]
