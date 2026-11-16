@@ -47,6 +47,7 @@ void rocev2_top(hls::stream<net_axis<DATA_WIDTH> > &s_axis_rx_data,
                 ap_uint<32> &regRetransCount, ap_uint<32> &regIbvCountRx, ap_uint<32> &regIbvCountTx);
 
 static int errors = 0;
+// count a failed check and print what failed
 static void check(bool ok, const char *what)
 {
     if (!ok) {
@@ -77,6 +78,7 @@ static hls::stream<psnPkg>    dbg0("dbg0"), dbg1("dbg1"), dbg2("dbg2");
 static ap_uint<128>           local_ip;
 static ap_uint<32>            reg_crc, reg_psn_drop, reg_retrans, reg_rx, reg_tx;
 
+// call the core's top function n times; its debug PSN streams are drained and ignored
 static void step(int n)
 {
     for (int i = 0; i < n; i++) {
@@ -90,6 +92,8 @@ static void step(int n)
 }
 
 // ---- packets as bytes -----------------------------------------------------------------------
+// the next packet BALBOA sends on m_tx, as bytes (TKEEP bytes only), stepping the core up to
+// max_steps times; returns what came so far if the packet has not ended by then
 static std::vector<uint8_t> read_packet(int max_steps)
 {
     std::vector<uint8_t> b;
@@ -105,6 +109,7 @@ static std::vector<uint8_t> read_packet(int max_steps)
     return b;
 }
 
+// queue packet b on s_rx, DATA_WIDTH/8 bytes per beat, TKEEP set for the bytes used
 static void write_packet(const std::vector<uint8_t> &b)
 {
     for (size_t i = 0; i < b.size(); i += DATA_WIDTH / 8) {
@@ -120,6 +125,7 @@ static void write_packet(const std::vector<uint8_t> &b)
     }
 }
 
+// n bytes of b from offset at, read as a big-endian number (n <= 4)
 static uint32_t be(const std::vector<uint8_t> &b, size_t at, int n)
 {
     uint32_t v = 0;
@@ -127,6 +133,7 @@ static uint32_t be(const std::vector<uint8_t> &b, size_t at, int n)
     return v;
 }
 
+// append the low n bytes of v to b, most significant first
 static void put_be(std::vector<uint8_t> &b, uint64_t v, int n)
 {
     for (int i = n - 1; i >= 0; i--) b.push_back((uint8_t)(v >> (8 * i)));
