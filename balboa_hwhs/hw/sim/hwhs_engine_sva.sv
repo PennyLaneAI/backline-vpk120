@@ -6,9 +6,7 @@
 //
 //   a_sq_hold, a_tx_hold          AXI-Stream: once VALID is up, VALID and the data hold until
 //                                 the handshake, abort included (a post is owed to BALBOA)
-//   a_m_axis_hold                 the same for the reply to transport_demo. abort breaks this
-//                                 today (it drops TVALID without a handshake), so no test
-//                                 aborts with a reply pending.
+//   a_m_axis_hold                 the same for the reply to transport_demo, abort included
 //   a_post_owed                   no round leaves IDLE while a post is owed
 //   a_reply_we                    reply RAM is written only for the reply that matched
 //                                 this round's seq

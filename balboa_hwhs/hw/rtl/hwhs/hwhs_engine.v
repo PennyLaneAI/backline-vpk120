@@ -172,6 +172,7 @@ module hwhs_engine #(
     reg  [63:0]           slot_raddr;   // remote address of ring_idx's slot, one cycle behind it
     reg  [31:0]           next_seq;     // seq the next request carries
     reg                   start_pend;   // a START not taken yet
+    reg                   abort_pend;   // pending abort
     reg                   demo_act;     // this round came from transport_demo
     reg                   round_ok;     // this round ended with its reply
     reg  [31:0]           to_cnt;       // cycles spent in WAIT
@@ -197,12 +198,16 @@ module hwhs_engine #(
     // ------------------------------------------------------------ //
     // Events
     // ------------------------------------------------------------ //
-    wire go          = !abort;
+    wire s_axis_hs   = (state == S_DEMO_RX) && s_axis_tready && s_axis_tvalid;
+    wire in_xfer     = (state == S_DEMO_FWD) || s_axis_hs;            // an s_axis or m_axis beat in flight
+    wire abort_req   = abort || abort_pend;
+    wire halt        = abort_req && !in_xfer;
+    wire go          = !halt;
     wire idle        = go && (state == S_IDLE) && !sts_post_busy;
     wire sw_begin    = idle && (start || start_pend);                 // a sw-loop round starts
     wire hw_begin    = idle && !(start || start_pend) && demo_run;    // offer s_axis one request
-    wire hw_stop     = go && (state == S_DEMO_RX) && !demo_run;       // demo ended before a request came
-    wire hw_take     = go && (state == S_DEMO_RX) && demo_run && s_axis_tready && s_axis_tvalid;
+    wire hw_stop     = go && (state == S_DEMO_RX) && !demo_run && !s_axis_hs; // demo ended before a request came
+    wire hw_take     = go && s_axis_hs;
     wire req_load    = (go && (state == S_RD2)) || hw_take;           // the request is posted
 
     wire sq_left     = sq_valid && !sq_ready;                         // still owed after this cycle
@@ -223,7 +228,7 @@ module hwhs_engine #(
     // FSM
     // ------------------------------------------------------------ //
     always @(posedge clk) begin
-        if (rst || abort) state <= S_IDLE;
+        if (rst || halt) state <= S_IDLE;
         else case (state)
             S_IDLE:     state <= sw_begin ? S_RD : hw_begin ? S_DEMO_RX : S_IDLE;
             S_RD:       state <= S_RD2;    // slot RAM read latency: hwhs_ram RD_LATENCY = 2
@@ -245,6 +250,7 @@ module hwhs_engine #(
     always @(posedge clk) begin
         if (rst) begin
             start_pend    <= 1'b0;
+            abort_pend    <= 1'b0;
             demo_act      <= 1'b0;
             s_axis_tready <= 1'b0;
             sq_valid      <= 1'b0;
@@ -252,15 +258,18 @@ module hwhs_engine #(
             next_seq      <= 32'd1;
             ring_idx      <= {C_SLOT_AW{1'b0}};
         end else begin
-            if (abort || sw_begin) start_pend <= 1'b0;
-            else if (start)        start_pend <= 1'b1;
+            if (abort_req || sw_begin) start_pend <= 1'b0;
+            else if (start)            start_pend <= 1'b1;
+
+            if (halt)       abort_pend <= 1'b0;
+            else if (abort) abort_pend <= 1'b1;
 
             if (sw_begin)      demo_act <= 1'b0;
             else if (hw_begin) demo_act <= 1'b1;
             else if (hw_stop)  demo_act <= 1'b0;
 
-            if (abort || hw_stop || hw_take) s_axis_tready <= 1'b0;
-            else if (hw_begin)               s_axis_tready <= 1'b1;
+            if (halt || hw_stop || hw_take) s_axis_tready <= 1'b0;
+            else if (hw_begin)              s_axis_tready <= 1'b1;
 
             // owed until taken, abort or not
             if (req_load)      sq_valid <= 1'b1;
@@ -308,7 +317,7 @@ module hwhs_engine #(
 
             reply_we <= got_reply;    // one cycle, while ring_idx still points at this round
 
-            if (abort || fwd_done)           m_axis_tvalid <= 1'b0;
+            if (fwd_done)                    m_axis_tvalid <= 1'b0;
             else if (round_over && demo_act) m_axis_tvalid <= 1'b1;
         end
     end
@@ -344,7 +353,7 @@ module hwhs_engine #(
             sts_state <= state;
 
             if (sw_begin || hw_begin)                       sts_busy <= 1'b1;
-            else if (abort || hw_stop || round_end || idle) sts_busy <= 1'b0;
+            else if (halt || hw_stop || round_end || idle)  sts_busy <= 1'b0;
 
             // per-round flags, cleared when a round takes its request
             if (sw_begin || hw_take) begin
