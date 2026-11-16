@@ -108,8 +108,6 @@ module tb_hwhs_balboa;
   wire [511:0]          rd_tdata;
   wire [63:0]           rd_tkeep;
   wire                  wr_valid, wr_ready, wr_tlast, wr_tvalid, wr_tready;
-  wire [47:0]           wr_vaddr;
-  wire [27:0]           wr_len;
   wire [511:0]          wr_tdata;
   wire [63:0]           wr_tkeep;
   wire                  mem_wr_valid, mem_wr_ready, mem_wr_tlast, mem_wr_tvalid, mem_wr_tready;
@@ -179,7 +177,7 @@ module tb_hwhs_balboa;
     .ack_valid(ack_valid), .ack_ready(ack_ready),
     .rd_valid(rd_valid), .rd_ready(rd_ready), .rd_len(rd_len),
     .rd_tdata(rd_tdata), .rd_tkeep(rd_tkeep), .rd_tlast(rd_tlast), .rd_tvalid(rd_tvalid), .rd_tready(rd_tready),
-    .wr_valid(wr_valid), .wr_ready(wr_ready), .wr_vaddr(wr_vaddr), .wr_len(wr_len),
+    .wr_valid(wr_valid), .wr_ready(wr_ready),
     .wr_tdata(wr_tdata), .wr_tkeep(wr_tkeep), .wr_tlast(wr_tlast), .wr_tvalid(wr_tvalid), .wr_tready(wr_tready),
     .mem_wr_valid(mem_wr_valid), .mem_wr_ready(mem_wr_ready), .mem_wr_cmd(mem_wr_cmd),
     .mem_wr_tdata(mem_wr_tdata), .mem_wr_tlast(mem_wr_tlast), .mem_wr_tvalid(mem_wr_tvalid), .mem_wr_tready(mem_wr_tready),

@@ -87,8 +87,6 @@ module balboa_net
   // WRITEs from the coprocessor
   output logic                    wr_valid,
   input  logic                    wr_ready,
-  output logic [47:0]             wr_vaddr,
-  output logic [27:0]             wr_len,
   output logic [AXI_NET_BITS-1:0] wr_tdata,
   output logic [AXI_NET_BITS/8-1:0] wr_tkeep,
   output logic                    wr_tlast,
@@ -267,8 +265,6 @@ module balboa_net
   assign rd_tready               = axis_rdma_rd_rsp.tready;
 
   assign wr_valid          = rdma_wr_req.valid;
-  assign wr_vaddr          = rdma_wr_req.data.vaddr;
-  assign wr_len            = rdma_wr_req.data.len;
   assign rdma_wr_req.ready = wr_ready;
 
   assign wr_tdata            = axis_rdma_wr.tdata;

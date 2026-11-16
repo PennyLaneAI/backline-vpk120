@@ -659,8 +659,6 @@ module backline_roce_top
   wire [511:0]          rd_tdata;
   wire [63:0]           rd_tkeep;
   wire                  wr_valid, wr_ready, wr_tlast, wr_tvalid, wr_tready;
-  wire [47:0]           wr_vaddr;
-  wire [27:0]           wr_len;
   wire [511:0]          wr_tdata;
   wire [63:0]           wr_tkeep;
   wire                  mem_wr_valid, mem_wr_ready, mem_wr_tlast, mem_wr_tvalid, mem_wr_tready;
@@ -720,8 +718,6 @@ module backline_roce_top
     .rd_tready     ( rd_tready     ),
     .wr_valid      ( wr_valid      ),
     .wr_ready      ( wr_ready      ),
-    .wr_vaddr      ( wr_vaddr      ),
-    .wr_len        ( wr_len        ),
     .wr_tdata      ( wr_tdata      ),
     .wr_tkeep      ( wr_tkeep      ),
     .wr_tlast      ( wr_tlast      ),
