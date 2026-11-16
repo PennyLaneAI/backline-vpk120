@@ -8,9 +8,9 @@
 //                   ICMP checksum still valid, payload unchanged), with the output stalled at
 //                   times; other ICMP types and IP headers with options are dropped
 //   axis_interconnect_512_4to1 / _2to1
-//                   one cycle from input to output; with every input busy, the inputs take
-//                   turns packet by packet with no idle cycle; with gaps on the inputs and
-//                   stalls on the output, every packet comes out whole and in order
+//                   one cycle from input to output; with every input busy, the inputs are
+//                   served round-robin, packet by packet, with no idle cycle; with gaps on the
+//                   inputs and stalls on the output, every packet comes out whole and in order
 //
 // Build and run with hw/sim/run.sh (Verilator). Exit status 0 = all checks passed.
 
@@ -327,7 +327,7 @@ module tb_net;
     check(x_order.size() == 48, $sformatf("48 packets (%0d)", x_order.size()));
     for (int i = 4; i < x_order.size(); i++)
       check(x_order[i] == x_order[i-4] && x_order[i] != x_order[i-1],
-            $sformatf("packet %0d from input %0d: the inputs take turns", i, x_order[i]));
+            $sformatf("packet %0d from input %0d: round-robin", i, x_order[i]));
     check(x_last_cyc - x_first_cyc + 1 == x_beats,
           $sformatf("%0d beats in %0d cycles", x_beats, x_last_cyc - x_first_cyc + 1));
 

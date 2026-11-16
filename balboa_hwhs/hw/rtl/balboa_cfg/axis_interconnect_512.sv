@@ -6,8 +6,8 @@
 //
 // They take the place of Vivado AXI4-Stream Interconnect cores, which Vivado does not offer for
 // Versal, with the same ports. A packet, once started, goes out whole; between packets the inputs
-// take turns. The output is registered: one cycle from input to output, a beat every cycle. All
-// ports run on ACLK; the per-port clocks and resets and ARB_REQ_SUPPRESS are not used.
+// are served round-robin. The output is registered: one cycle from input to output, a beat every
+// cycle. All ports run on ACLK; the per-port clocks and resets and ARB_REQ_SUPPRESS are not used.
 
 `timescale 1ns / 1ps
 
