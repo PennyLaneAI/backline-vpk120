@@ -56,8 +56,6 @@ module icmp_server_ip (
   state_t state;
 
   logic [63:0] b0, b1, b2;
-  logic [7:0]  k2;
-  logic        last2;            // the packet ended in beat 2
 
   assign udpIn_TREADY = 1'b1;    // network_stack ties these inputs off
   assign ttlIn_TREADY = 1'b1;
@@ -65,8 +63,10 @@ module icmp_server_ip (
   wire s_fire = s_axis_TVALID && s_axis_TREADY;
   wire m_fire = m_axis_TVALID && m_axis_TREADY;
 
-  // an echo request with a plain 20-byte IP header
-  wire echo_req = (b0[7:0] == 8'h45) && (s_axis_TDATA[39:32] == 8'd8);
+  wire full = &s_axis_TKEEP;      // beats 0..2 of an echo request are always full
+
+  // an echo request with a plain 20-byte IP header; at least 28 bytes, so beat 2 is not the last
+  wire echo_req = (b0[7:0] == 8'h45) && (s_axis_TDATA[39:32] == 8'd8) && full && !s_axis_TLAST;
 
   // ICMP checksum for type 8 -> 0: one's-complement add of 0x0800 (bytes 22, 23 are big-endian)
   wire [15:0] cs_in  = {s_axis_TDATA[55:48], s_axis_TDATA[63:56]};
@@ -80,18 +80,16 @@ module icmp_server_ip (
       case (state)
         S_H0: if (s_fire) begin
           b0    <= s_axis_TDATA;
-          state <= s_axis_TLAST ? S_H0 : S_H1;
+          state <= s_axis_TLAST ? S_H0 : full ? S_H1 : S_DROP;
         end
         S_H1: if (s_fire) begin
           b1    <= s_axis_TDATA;
-          state <= s_axis_TLAST ? S_H0 : S_H2;
+          state <= s_axis_TLAST ? S_H0 : full ? S_H2 : S_DROP;
         end
         S_H2: if (s_fire) begin
           if (echo_req) begin
             b1[63:32] <= s_axis_TDATA[31:0];                  // source <- destination
             b2        <= {cs_out[7:0], cs_out[15:8], s_axis_TDATA[47:40], 8'd0, b1[63:32]};
-            k2        <= s_axis_TKEEP;
-            last2     <= s_axis_TLAST;
             state     <= S_E0;
           end else begin
             state <= s_axis_TLAST ? S_H0 : S_DROP;
@@ -99,7 +97,7 @@ module icmp_server_ip (
         end
         S_E0:   if (m_fire) state <= S_E1;
         S_E1:   if (m_fire) state <= S_E2;
-        S_E2:   if (m_fire) state <= last2 ? S_H0 : S_FWD;
+        S_E2:   if (m_fire) state <= S_FWD;
         S_FWD:  if (s_fire && s_axis_TLAST) state <= S_H0;
         S_DROP: if (s_fire && s_axis_TLAST) state <= S_H0;
         default: state <= S_H0;
@@ -130,8 +128,8 @@ module icmp_server_ip (
       S_E2: begin
         m_axis_TVALID = 1'b1;
         m_axis_TDATA  = b2;
-        m_axis_TKEEP  = k2;
-        m_axis_TLAST  = last2;
+        m_axis_TKEEP  = 8'hFF;
+        m_axis_TLAST  = 1'b0;
       end
       S_FWD: begin
         m_axis_TVALID = s_axis_TVALID;

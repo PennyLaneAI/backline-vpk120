@@ -6,7 +6,8 @@
 //                   multi-beat frames pass unchanged
 //   icmp_server_ip  an echo request comes back as an echo reply (addresses swapped, type 0,
 //                   ICMP checksum still valid, payload unchanged), with the output stalled at
-//                   times; other ICMP types and IP headers with options are dropped
+//                   times; other ICMP types, IP headers with options and requests cut short
+//                   are dropped
 //   axis_interconnect_512_4to1 / _2to1
 //                   one cycle from input to output; with every input busy, the inputs are
 //                   served round-robin, packet by packet, with no idle cycle; with gaps on the
@@ -293,6 +294,12 @@ module tb_net;
     ip_icmp(req, 5, 8'd0, 8);                         // an echo reply
     icmp_send(req);
     ip_icmp(req, 6, 8'd8, 8);                         // IP options
+    icmp_send(req);
+    ip_icmp(req, 5, 8'd8, 0);                         // cut to 24 bytes: ends in beat 2
+    repeat (4) void'(req.pop_back());
+    icmp_send(req);
+    ip_icmp(req, 5, 8'd8, 0);                         // cut to 22 bytes: beat 2 partly kept
+    repeat (6) void'(req.pop_back());
     icmp_send(req);
     ip_icmp(req, 5, 8'd8, 0);                         // the smallest echo request: 28 bytes
     icmp_send(req);
