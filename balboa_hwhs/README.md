@@ -285,7 +285,7 @@ Check, in order:
    the cable and the far end, then run `mrmac-up` again.
 3. **`ping 192.168.0.2`** on the coprocessor host gets replies, and `balboactl stats` on the board
    counts them as ICMP rx/tx.
-4. **`balboactl arp 192.168.0.1`** on the board prints `ARP reply received`.
+4. **`balboactl arp 192.168.0.1`** on the board prints `192.168.0.1: resolved`.
 
 ## Run a Session
 

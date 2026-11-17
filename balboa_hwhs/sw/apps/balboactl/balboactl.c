@@ -510,7 +510,7 @@ int main(int argc, char **argv)
     }
     else if (!strcmp(cmd, "arp") && argc >= 3) {
         rc = parse_ip(argv[2], &ip) ? 2 : hwhs_arp(&h, ip, 1000) ? 1 : 0;
-        printf("%s: %s\n", argv[2], rc == 0 ? "ARP reply received" : "no ARP reply");
+        printf("%s: %s\n", argv[2], rc == 0 ? "resolved" : "not resolved");
     }
     else if (!strcmp(cmd, "run")) {
         rc = cmd_run(&h, argc - 1, argv + 1);

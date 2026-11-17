@@ -175,18 +175,16 @@ void hwhs_set_addr(struct hwhs *h, uint32_t ip, const uint8_t mac[6])
 
 int hwhs_arp(struct hwhs *h, uint32_t ip, int timeout_ms)
 {
-    uint32_t rx0 = hwhs_rd(h, HWHS_NET_STATS + 4 * HWHS_STAT_ARP_RX);
-    hwhs_wr(h, HWHS_ARP_IP, ip);
-    if (net_push(h, HWHS_NET_ARP, 100)) return -1;
-
-    /* BALBOA keeps the answer to itself; an ARP frame coming in is the sign it has it */
     uint64_t deadline = now_ns() + (uint64_t)timeout_ms * 1000000ull;
-    while (hwhs_rd(h, HWHS_NET_STATS + 4 * HWHS_STAT_ARP_RX) == rx0) {
+    hwhs_wr(h, HWHS_ARP_IP, ip);
+    for (;;) {
+        /* a lookup sends an ARP request only on a miss */
+        uint32_t tx0 = hwhs_rd(h, HWHS_NET_STATS + 4 * HWHS_STAT_ARP_TX);
+        if (net_push(h, HWHS_NET_ARP, 100)) return -1;
+        usleep(10000);
+        if (hwhs_rd(h, HWHS_NET_STATS + 4 * HWHS_STAT_ARP_TX) == tx0) return 0;
         if (now_ns() > deadline) return -1;
-        usleep(100);
     }
-    usleep(1000);   /* the reply reaches the ARP table a few cycles after the counter */
-    return 0;
 }
 
 /* `width` bits of v into the 184-bit context at bit `lsb` */
