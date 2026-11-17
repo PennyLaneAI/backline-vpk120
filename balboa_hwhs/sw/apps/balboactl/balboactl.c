@@ -23,6 +23,7 @@
 #include "hwhs.h"
 
 #include <arpa/inet.h>
+#include <assert.h>
 #include <errno.h>
 #include <getopt.h>
 #include <inttypes.h>
@@ -45,7 +46,7 @@ struct request {
     uint32_t attempt;
     uint8_t pad[FRAME_BYTES - 24];
 };
-_Static_assert(sizeof(struct request) == FRAME_BYTES, "request layout");
+static_assert(sizeof(struct request) == FRAME_BYTES, "request layout");
 
 static uint32_t parse_u32(const char *s) { return (uint32_t)strtoul(s, NULL, 0); }
 
