@@ -156,6 +156,10 @@ static int tcp_connect(const char *ip, int port)
         return -1;
     }
     int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        fprintf(stderr, "socket: %s\n", strerror(errno));
+        return -1;
+    }
     int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     if (connect(fd, (struct sockaddr *)&a, sizeof(a))) {

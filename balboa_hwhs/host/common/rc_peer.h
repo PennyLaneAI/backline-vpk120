@@ -279,6 +279,7 @@ static inline int rc_listen(const struct rc_peer *p, int port)
 {
     int ls = socket(AF_INET, SOCK_STREAM, 0), one = 1;
     struct sockaddr_in sa;
+    if (ls < 0) rc_die(p, "socket");
     setsockopt(ls, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
@@ -292,6 +293,7 @@ static inline int rc_dial(const struct rc_peer *p, const char *ip, int port)
 {
     struct sockaddr_in a;
     int fd = socket(AF_INET, SOCK_STREAM, 0), one = 1;
+    if (fd < 0) rc_die(p, "socket");
     memset(&a, 0, sizeof(a));
     a.sin_family = AF_INET;
     a.sin_port = htons((uint16_t)port);
