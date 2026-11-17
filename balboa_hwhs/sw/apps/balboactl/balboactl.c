@@ -492,11 +492,17 @@ int main(int argc, char **argv)
     }
     else if (!strcmp(cmd, "reg") && argc >= 3) {
         uint32_t off = parse_u32(argv[2]);
-        if (argc >= 4) {
-            hwhs_wr(&h, off, parse_u32(argv[3]));
+        if (off >= HWHS_SIZE_REGS || off % 4) {
+            fprintf(stderr, "reg: offset must be a multiple of 4 below 0x%x\n", HWHS_SIZE_REGS);
+            rc = 2;
         }
-        printf("0x%03x = 0x%08x\n", off, hwhs_rd(&h, off));
-        rc = 0;
+        else {
+            if (argc >= 4) {
+                hwhs_wr(&h, off, parse_u32(argv[3]));
+            }
+            printf("0x%03x = 0x%08x\n", off, hwhs_rd(&h, off));
+            rc = 0;
+        }
     }
     else if (!strcmp(cmd, "stack-reset")) {
         rc = hwhs_stack_reset(&h, 1000) ? 1 : 0;
