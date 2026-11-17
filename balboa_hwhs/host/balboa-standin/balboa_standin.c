@@ -83,15 +83,18 @@ int main(int argc, char **argv)
 
     /* ---- handshake, as balboactl run ----------------------------------------------------- */
     int fd = rc_dial(&p, host, tcp_port);
+    uint64_t *rtt = NULL;
+    FILE *out = NULL;
+    int rc = 1;
     struct balboa_hs_host hi;
     if (rc_read_full(fd, &hi, sizeof(hi)) || hi.magic != BALBOA_HS_MAGIC || hi.version != BALBOA_HS_VERSION) {
         fprintf(stderr, "balboa-standin: bad handshake from %s\n", host);
-        return 1;
+        goto cleanup;
     }
     if (hi.ring_slots == 0 || hi.ring_slots > 1024 || (hi.ring_slots & (hi.ring_slots - 1)) ||
         hi.ring_stride < REQ_BYTES || (hi.ring_stride & (hi.ring_stride - 1))) {
         fprintf(stderr, "balboa-standin: ring of %u slots, %u B apart\n", hi.ring_slots, hi.ring_stride);
-        return 1;
+        goto cleanup;
     }
     printf("coprocessor: qpn 0x%06x psn 0x%06x rkey 0x%08x ring %u x %u B @ 0x%" PRIx64 ", %u.%u.%u.%u\n",
            hi.qpn, hi.psn, hi.rkey, hi.ring_slots, hi.ring_stride, hi.ring_iova, hi.ip >> 24,
@@ -114,12 +117,12 @@ int main(int argc, char **argv)
     struct balboa_hs_ready rd;
     if (rc_write_full(fd, &fo, sizeof(fo)) || rc_read_full(fd, &rd, sizeof(rd)) || rd.magic != BALBOA_HS_MAGIC) {
         fprintf(stderr, "balboa-standin: coprocessor did not get ready\n");
-        return 1;
+        goto cleanup;
     }
 
     /* ---- rounds: request into slot k, wait for its seq in the reply buffer ------------- */
-    uint64_t *rtt = (uint64_t *)calloc(rounds, sizeof(uint64_t));
-    FILE *out = csv ? fopen(csv, "w") : NULL;
+    rtt = (uint64_t *)calloc(rounds, sizeof(uint64_t));
+    out = csv ? fopen(csv, "w") : NULL;
     if (!rtt || (csv && !out)) rc_die(&p, "rtt buffer");
     if (out) fprintf(out, "round,rtt_ns\n");
     uint64_t errors = 0, bad = 0;
@@ -170,11 +173,14 @@ int main(int argc, char **argv)
                "  max %" PRIu64 "\n", n, rtt[0], rtt[n / 2], rtt[(uint64_t)n * 99 / 100],
                rtt[(uint64_t)n * 999 / 1000], rtt[n - 1]);
     }
+    rc = (timeouts || bad || errors) ? 1 : 0;
+
+cleanup:
     if (out) fclose(out);
     close(fd);
     ibv_dereg_mr(mr);
     rc_close(&p);
     free(reply);
     free(rtt);
-    return (timeouts || bad || errors) ? 1 : 0;
+    return rc;
 }
