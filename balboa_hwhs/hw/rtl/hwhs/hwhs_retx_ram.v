@@ -20,7 +20,7 @@
 // message keeps only its first beats, which hwhs never sends.
 //
 //===----------------------------------------------------------------------===//
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 `default_nettype none
 
 module hwhs_retx_ram #(

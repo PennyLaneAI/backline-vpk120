@@ -12,7 +12,7 @@
 //
 // Build and run with hw/sim/run.sh (Verilator). Exit status 0 = all checks passed.
 
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 
 module tb_hwhs_engine;
   localparam int SLOT_AW  = 4;     // 16 slots
@@ -26,7 +26,7 @@ module tb_hwhs_engine;
                          S_DEMO_FWD = 4'd6, S_DONE = 4'd7;
 
   logic clk = 1'b0;
-  always #2000 clk = ~clk;
+  always #2 clk = ~clk;
   int unsigned cyc = 0;
   always @(posedge clk) cyc <= cyc + 1;
 

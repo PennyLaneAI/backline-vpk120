@@ -15,11 +15,11 @@
 //
 // Build and run with hw/sim/run.sh (Verilator). Exit status 0 = all checks passed.
 
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 
 module tb_net;
   logic clk = 1'b0;
-  always #2000 clk = ~clk;
+  always #2 clk = ~clk;
   logic rstn = 1'b0;
 
   int errors = 0;

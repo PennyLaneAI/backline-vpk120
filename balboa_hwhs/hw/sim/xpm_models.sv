@@ -9,7 +9,7 @@
 //   xpm_cdc_single      DEST_SYNC_FF flops in the destination clock
 //   xpm_cdc_array_single
 
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 
 module xpm_memory_tdpram #(
   parameter integer MEMORY_SIZE        = 2048,

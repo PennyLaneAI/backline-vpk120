@@ -32,7 +32,7 @@
 // them, so no continuous assignment depends on a queue (Verilator does not re-evaluate those
 // when a queue changes).
 
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 
 module rocev2_ip (
   input  logic         ap_clk,

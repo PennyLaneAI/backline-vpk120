@@ -5,7 +5,7 @@
 // show the stack's IP and MAC in the lab. The board reads those from hwhs_regs instead, and a
 // debug core would need a debug hub on the Versal NoC, so this module is empty.
 
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 
 module vio_ip (
   input logic        clk,

@@ -75,7 +75,7 @@
 ///   0x160-0x174 CONN_CTX RW BALBOA rdma_qp_conn_t, the same way
 ///                    (qp_push / conn_push send a copy, so these can be rewritten at once)
 //===----------------------------------------------------------------------===//
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 `default_nettype none
 
 module hwhs_regs #(

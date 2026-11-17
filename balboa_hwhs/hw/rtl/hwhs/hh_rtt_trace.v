@@ -16,7 +16,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 `default_nettype none
 (* DowngradeIPIdentifiedWarnings="yes" *)
 

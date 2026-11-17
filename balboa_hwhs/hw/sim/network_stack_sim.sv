@@ -7,7 +7,7 @@
 // cores with no simulation model here; the RDMA interfaces, which is what hwhs and
 // balboa_net drive, go straight to roce_stack as in network_stack.sv. Simulation only.
 
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 
 module network_stack
   import lynxTypes::*;

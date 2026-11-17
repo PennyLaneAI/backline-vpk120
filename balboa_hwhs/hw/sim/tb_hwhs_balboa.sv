@@ -26,7 +26,7 @@
 //
 // Build and run with hw/sim/run.sh (Verilator). Exit status 0 = all checks passed.
 
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 
 module tb_hwhs_balboa;
   import lynxTypes::*;
@@ -60,7 +60,7 @@ module tb_hwhs_balboa;
   localparam logic [15:0] SRC_PORT  = 16'hC000;
 
   logic clk = 1'b0;
-  always #2000 clk = ~clk;          // 250 MHz
+  always #2 clk = ~clk;          // 250 MHz
   int unsigned cyc = 0;
   always @(posedge clk) cyc <= cyc + 1;
 

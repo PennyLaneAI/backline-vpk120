@@ -39,7 +39,7 @@
 //   hw-loop: from the s_axis handshake to the m_axis handshake
 //
 //===----------------------------------------------------------------------===//
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 `default_nettype none
 
 module hwhs_engine #(

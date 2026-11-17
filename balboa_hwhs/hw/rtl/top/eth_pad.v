@@ -10,7 +10,7 @@
 // else passes through unchanged, with no register in between.
 //
 //===----------------------------------------------------------------------===//
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 `default_nettype none
 
 module eth_pad #(

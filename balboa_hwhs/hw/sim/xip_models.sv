@@ -10,7 +10,7 @@
 //
 // The real FIFOs take a few cycles more from input to output; nothing here depends on that.
 
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 
 module xip_fifo #(
   parameter int DW    = 8,
