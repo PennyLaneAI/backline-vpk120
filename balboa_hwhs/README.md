@@ -156,7 +156,8 @@ The address map is in the header of `hw/bd/platform.tcl`. The hwhs register map 
 ### Build
 
 - A Linux build host with AMD Vivado 2024.2 (Versal Premium support), Vitis HLS 2024.2 (installed
-  with Vitis 2024.2) and AMD PetaLinux 2024.2.
+  with Vitis 2024.2) and AMD PetaLinux 2024.2. `make hw` needs both Vivado and Vitis HLS (Vitis
+  HLS builds BALBOA's HLS cores), and AMD's installer can install either one without the other.
 - AMD **ERNIC VPK120 MRMAC reference design**, v1.3
   (release `ERNIC-2024_2_VPK120_RC6`), downloaded as
   `reference design VPK120_mrmac_rev_1.3.zip`.
