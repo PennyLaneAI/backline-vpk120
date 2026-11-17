@@ -51,7 +51,7 @@ static inline void hwhs_wr(const struct hwhs *h, uint32_t off, uint32_t v) { h->
 int hwhs_stack_reset(struct hwhs *h, int timeout_ms);
 
 /* Give BALBOA its IPv4 (host byte order) and MAC. */
-int hwhs_set_addr(struct hwhs *h, uint32_t ip, const uint8_t mac[6]);
+void hwhs_set_addr(struct hwhs *h, uint32_t ip, const uint8_t mac[6]);
 
 /* Ask BALBOA's ARP server to resolve `ip`; 0 once an ARP reply has come in, -1 on timeout. */
 int hwhs_arp(struct hwhs *h, uint32_t ip, int timeout_ms);

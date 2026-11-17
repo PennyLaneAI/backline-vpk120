@@ -374,10 +374,11 @@ static int cmd_run(struct hwhs *h, int argc, char **argv)
 
     /* 2: BALBOA from reset (QP state, PSNs, ARP table), its address, the coprocessor's MAC,
      * the QP; then the engine */
-    if (hwhs_stack_reset(h, 1000) || hwhs_set_addr(h, fpga_ip, fpga_mac)) {
+    if (hwhs_stack_reset(h, 1000)) {
         close(fd);
         return 1;
     }
+    hwhs_set_addr(h, fpga_ip, fpga_mac);
     if (hwhs_arp(h, hi.ip, 1000)) {
         fprintf(stderr, "run: no ARP reply from %s; is its RoCE netdev up, in %s's subnet?\n",
                 ip_str(hi.ip), ip_str(fpga_ip));

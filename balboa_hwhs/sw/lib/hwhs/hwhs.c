@@ -149,7 +149,7 @@ int hwhs_stack_reset(struct hwhs *h, int timeout_ms)
     return 0;
 }
 
-/* NET_CTRL pushes are taken in a few cycles; this only guards against a stack held in reset */
+/* Push ARP, QP or conn bits and wait until BALBOA takes them */
 static int net_push(struct hwhs *h, uint32_t bits, int timeout_ms)
 {
     hwhs_wr(h, HWHS_NET_CTRL, bits);
@@ -164,13 +164,13 @@ static int net_push(struct hwhs *h, uint32_t bits, int timeout_ms)
     return 0;
 }
 
-int hwhs_set_addr(struct hwhs *h, uint32_t ip, const uint8_t mac[6])
+void hwhs_set_addr(struct hwhs *h, uint32_t ip, const uint8_t mac[6])
 {
     hwhs_wr(h, HWHS_LOCAL_IP, ip);
     hwhs_wr(h, HWHS_LOCAL_MAC_LO, ((uint32_t)mac[2] << 24) | ((uint32_t)mac[3] << 16) |
                                   ((uint32_t)mac[4] << 8) | mac[5]);
     hwhs_wr(h, HWHS_LOCAL_MAC_HI, ((uint32_t)mac[0] << 8) | mac[1]);
-    return net_push(h, HWHS_NET_SET_IP | HWHS_NET_SET_MAC, 100);
+    hwhs_wr(h, HWHS_NET_CTRL, HWHS_NET_SET_IP | HWHS_NET_SET_MAC);
 }
 
 int hwhs_arp(struct hwhs *h, uint32_t ip, int timeout_ms)
