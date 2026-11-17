@@ -11,7 +11,7 @@
  * PSN for both directions, the reply buffer at IOVA 0.
  *
  *   balboa-standin -d mlx5_0 -H <coprocessor management ip> [-i ib_port] [-g gid_index]
- *                  [-p tcp_port] [-n rounds] [-c cpu] [-r] [-o rtt.csv]
+ *                  [-p tcp_port] [-n rounds] [-t timeout_us] [-c cpu] [-r] [-o rtt.csv]
  *
  * Both ends can be on one host and one port (the NIC loops RC traffic between its own QPs);
  * the RTTs then measure the host and the NIC, not a wire.
@@ -47,8 +47,9 @@ int main(int argc, char **argv)
     const char *devname = NULL, *host = NULL, *csv = NULL;
     int ib_port = 1, gid_index = 3, tcp_port = BALBOA_HS_PORT, cpu = -1, rt = 0, c;
     uint32_t rounds = 10000;
+    double timeout_us = 1e6;
 
-    while ((c = getopt(argc, argv, "d:H:i:g:p:n:c:ro:")) != -1) {
+    while ((c = getopt(argc, argv, "d:H:i:g:p:n:t:c:ro:")) != -1) {
         switch (c) {
         case 'd': devname = optarg; break;
         case 'H': host = optarg; break;
@@ -56,12 +57,13 @@ int main(int argc, char **argv)
         case 'g': gid_index = atoi(optarg); break;
         case 'p': tcp_port = atoi(optarg); break;
         case 'n': rounds = (uint32_t)strtoul(optarg, NULL, 0); break;
+        case 't': timeout_us = atof(optarg); break;
         case 'c': cpu = atoi(optarg); break;
         case 'r': rt = 1; break;
         case 'o': csv = optarg; break;
         default:
             fprintf(stderr, "usage: balboa-standin -d <ibdev> -H <coprocessor ip> [-i ib_port] [-g gid_index] "
-                            "[-p tcp_port] [-n rounds] [-c cpu] [-r] [-o rtt.csv]\n");
+                            "[-p tcp_port] [-n rounds] [-t timeout_us] [-c cpu] [-r] [-o rtt.csv]\n");
             return 2;
         }
     }
@@ -128,6 +130,7 @@ int main(int argc, char **argv)
     uint64_t errors = 0, bad = 0;
     unsigned inflight = 0;
     uint32_t done = 0, timeouts = 0;
+    uint64_t timeout_ns = (uint64_t)(timeout_us * 1000.0);
 
     for (uint32_t i = 0; i < rounds; i++) {
         uint8_t req[REQ_BYTES];
@@ -146,13 +149,13 @@ int main(int argc, char **argv)
         rc_write_inline(&p, req, REQ_BYTES, raddr, hi.rkey, i, sig);
         inflight++;
         while (*(volatile uint32_t *)(reply + SEQ_OFF) != seq) {
-            if (now_ns() - t0 > 1000000000ull) break;
+            if (now_ns() - t0 > timeout_ns) break;
             rc_cpu_relax();
         }
         uint64_t t1 = now_ns();
         if (*(volatile uint32_t *)(reply + SEQ_OFF) != seq) {
             timeouts++;
-            fprintf(stderr, "balboa-standin: round %u: no reply in 1 s\n", i);
+            fprintf(stderr, "balboa-standin: round %u: no reply in %.0f us\n", i, timeout_us);
             break;
         }
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
