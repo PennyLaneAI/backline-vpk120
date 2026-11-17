@@ -221,8 +221,8 @@ Other build options:
 
 ## Program the Board
 
-Set the board boot-mode switches to **JTAG mode** and power-cycle the board. With the Vivado
-environment sourced, run:
+`make boot` switches the board to JTAG boot mode and resets it before loading the image, so the
+boot-mode switches can stay where they are. With the Vivado environment sourced, run:
 
 ```bash
 make boot                   # runs xsdb jtag-boot.tcl in build/petalinux/backline-roce

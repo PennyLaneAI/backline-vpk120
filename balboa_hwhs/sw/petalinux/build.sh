@@ -82,6 +82,7 @@ petalinux-build
 petalinux-package --boot --format BIN --plm --psmfw --u-boot --dtb --force
 petalinux-boot jtag --kernel images/linux/Image --rootfs images/linux/rootfs.cpio.gz.u-boot --tcl jtag-boot.tcl
 
+# jtag-boot.tcl: switch to JTAG boot mode (CRP BOOT_MODE_USER) and reset
 sed -i -e 's/\*PMC\*/PMC/g' \
     -e '1a after 2000\ntargets -set -nocase -filter {name =~ "*Versal*"}\nmwr 0xf1260200 0x0100\nrst -system\nafter 3000' \
     jtag-boot.tcl
