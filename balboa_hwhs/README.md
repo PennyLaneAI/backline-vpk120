@@ -35,9 +35,7 @@ Individual subsystems within this folder are licensed under their respective dir
   property of Advanced Micro Devices, Inc. Users must download it directly from AMD. `make amd`
   unpacks the parts the build reads into `build/amd`:
   - for Vivado: the CIPS, NoC and MRMAC Tcl, the MRMAC example design RTL, the clock wizard and the XDCs;
-  - for PetaLinux: the BSP and the VPK120 rev B board device tree (`versal-vpk120-revB.dtsi`,
-    GPL-2.0, © Xilinx). `sw/petalinux/build.sh` copies the dtsi into the image's device-tree
-    recipe.
+  - for PetaLinux: the BSP.
 - **AMD Versal 100G Multirate Ethernet MAC IP License:** Rebuilding the design requires an active AMD [100G Multirate Ethernet MAC IP license](https://www.amd.com/en/products/adaptive-socs-and-fpgas/intellectual-property/mrmac.html).
 - **BALBOA:** Coyote's RTL is MIT, © ETH Zurich (`third_party/balboa/coyote/LICENSE.md`). The HLS
   cores from fpga-network-stack are BSD-3-Clause, © ETH Zurich; `ip_handler`, `mac_ip_encode` and
