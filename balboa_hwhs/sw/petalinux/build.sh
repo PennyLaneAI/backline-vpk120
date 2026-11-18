@@ -5,27 +5,23 @@
 # Build the PetaLinux 2024.2 image for backline-roce.
 #
 #   source <petalinux>/settings.sh
-#   sw/petalinux/build.sh <backline_roce.xsa> <xilinx-vpk120-xsct-v2024.2-final.bsp> \
-#                         <versal-vpk120-revB.dtsi> [out_dir]
+#   sw/petalinux/build.sh <backline_roce.xsa> <xilinx-vpk120-xsct-v2024.2-final.bsp> [out_dir]
 #
 # Creates out_dir/backline-roce (default build/petalinux) from the VPK120 BSP, imports the
 # XSA, adds sw/petalinux/meta-user (device tree, UIO kernel config, hwhs-tools, vpk-init),
-# builds, packages BOOT.BIN and writes jtag-boot.tcl. The board dtsi is AMD's, which
-# scripts/unpack-amd.sh puts in build/amd/sw.
+# builds, packages BOOT.BIN and writes jtag-boot.tcl.
 set -euo pipefail
 
-USAGE="usage: build.sh <xsa> <bsp> <board dtsi> [out_dir]"
+USAGE="usage: build.sh <xsa> <bsp> [out_dir]"
 XSA="$(cd "$(dirname "${1:?$USAGE}")" && pwd)/$(basename "$1")"
 BSP="$(cd "$(dirname "${2:?$USAGE}")" && pwd)/$(basename "$2")"
-DTSI="$(cd "$(dirname "${3:?$USAGE}")" && pwd)/$(basename "$3")"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-OUT="${4:-$REPO/build/petalinux}"
+OUT="${3:-$REPO/build/petalinux}"
 NAME=backline-roce
 
 command -v petalinux-create >/dev/null || { echo "ERROR: source the PetaLinux 2024.2 settings.sh first" >&2; exit 1; }
 [ -f "$XSA" ] || { echo "ERROR: no XSA at $XSA" >&2; exit 1; }
 [ -f "$BSP" ] || { echo "ERROR: no BSP at $BSP" >&2; exit 1; }
-[ -f "$DTSI" ] || { echo "ERROR: no board dtsi at $DTSI (run make amd first)" >&2; exit 1; }
 
 mkdir -p "$OUT"
 cd "$OUT"
@@ -42,10 +38,12 @@ printf 'DL_DIR = "%s/downloads"\nSSTATE_DIR = "%s/sstate-cache"\n' "$OUT" "$OUT"
 
 petalinux-config --get-hw-description "$XSA" --silentconfig
 
-# Device tree: system-user.dtsi + the VPK120 rev B board dtsi
+# Device tree: DTG adds the board fragment (versal-vpk120-revb.dtsi) for this machine name;
+# system-user.dtsi comes from our bbappend.
+grep -qx 'CONFIG_SUBSYSTEM_MACHINE_NAME="versal-vpk120-revb"' project-spec/configs/config || {
+    echo "ERROR: BSP machine name is not versal-vpk120-revb; the board DT would be missing" >&2; exit 1; }
 rm -rf "$META/recipes-bsp/device-tree"
 cp -R "$SRC/recipes-bsp/device-tree" "$META/recipes-bsp/"
-cp "$DTSI" "$META/recipes-bsp/device-tree/files/versal-vpk120-revB.dtsi"
 
 # Kernel: generic-uio built in
 mkdir -p "$META/recipes-kernel/linux/files"

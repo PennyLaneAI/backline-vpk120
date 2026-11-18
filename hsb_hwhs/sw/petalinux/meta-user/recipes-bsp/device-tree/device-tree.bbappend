@@ -2,12 +2,7 @@
 # Copyright 2026 Xanadu Quantum Technologies Inc.
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
-# versal-vpk120-revB.dtsi (Xilinx, GPL-2.0) is not in this repo; build.sh copies it in from
-# build/amd/sw.
-SRC_URI:append = " file://system-user.dtsi \
-                   file://versal-vpk120-revB.dtsi"
-
-do_configure:append() {
-	echo "#include \"system-user.dtsi\"" >> "${DT_FILES_PATH}/system-top.dts"
-	echo "#include \"versal-vpk120-revB.dtsi\"" >> "${DT_FILES_PATH}/system-top.dts"
-}
+# The board fragment (versal-vpk120-revb.dtsi) comes from the stock DTG flow: the VPK120 BSP sets
+# CONFIG_SUBSYSTEM_MACHINE_NAME="versal-vpk120-revb", so the generated system-top.dts includes it
+# from device-tree-xlnx, followed by pcw.dtsi and our system-user.dtsi.
+SRC_URI:append = " file://system-user.dtsi"

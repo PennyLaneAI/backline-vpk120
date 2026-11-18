@@ -34,9 +34,7 @@ Individual subsystems within this folder are licensed under their respective dir
 - **Reference Design Sources:** The AMD ERNIC MRMAC reference design remains the
   intellectual property of Advanced Micro Devices, Inc. Users must download it directly from AMD. `make amd` unpacks the parts the build reads into `build/amd`:
   - for Vivado: the CIPS, NoC and MRMAC Tcl, the MRMAC example design RTL, the clock wizard and the XDCs;
-  - for PetaLinux: the BSP and the VPK120 rev B board device tree (`versal-vpk120-revB.dtsi`,
-    GPL-2.0, © Xilinx). `sw/petalinux/build.sh` copies the dtsi into the image's device-tree
-    recipe.
+  - for PetaLinux: the BSP.
 - **AMD Versal 100G Multirate Ethernet MAC IP License:** Rebuilding the design requires an active AMD [100G Multirate Ethernet MAC IP license](https://www.amd.com/en/products/adaptive-socs-and-fpgas/intellectual-property/mrmac.html).
 - **NVIDIA HSB IP:** Apache License, Version 2.0, © NVIDIA (`third_party/hsb/LICENSE`).
 - **Backline Sources:** All other files in this folder are licensed under the Apache License,
@@ -140,8 +138,7 @@ The address map is in the header of `hw/bd/platform.tcl`. The hwhs register map 
   `reference design VPK120_mrmac_rev_1.3.zip`.
   - The build takes CIPS, the NoC/LPDDR4, the MRMAC core-support BD, the MRMAC example design
     RTL, the clock wizard and the XDCs from it.
-  - The VPK120 XSCT 2024.2 BSP ships in the same zip, and so does the VPK120 board device tree
-    (inside the ERNIC software package).
+  - The VPK120 XSCT 2024.2 BSP ships in the same zip.
 
 ### Checks without Vivado (optional)
 

@@ -45,8 +45,7 @@ hw: project
 	    -tclargs -xpr $(PROJ)/backline_hsb.xpr -jobs $(JOBS)
 
 petalinux:
-	sw/petalinux/build.sh $(PROJ)/backline_hsb.xsa $(BSP) $(BUILD)/amd/sw/versal-vpk120-revB.dtsi \
-	    $(BUILD)/petalinux
+	sw/petalinux/build.sh $(PROJ)/backline_hsb.xsa $(BSP) $(BUILD)/petalinux
 
 boot:
 	cd $(BUILD)/petalinux/backline-hsb && xsdb jtag-boot.tcl
