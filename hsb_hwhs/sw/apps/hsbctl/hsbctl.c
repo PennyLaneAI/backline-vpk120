@@ -362,6 +362,7 @@ static int cmd_run(struct hwhs *h, int argc, char **argv)
         .ring_slots = hi.ring_slots,
         .host_ip = hi.ip,
         .frame_bytes = FRAME_BYTES,
+        .imm = hi.imm,
     };
     memcpy(dp.host_mac, hi.mac, 6);
     if (hwhs_hsb_reset(h, 1000) || hwhs_hsb_configure(h, &dp)) {
