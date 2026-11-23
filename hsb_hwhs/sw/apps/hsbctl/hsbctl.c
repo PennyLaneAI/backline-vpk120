@@ -9,8 +9,11 @@
  *   hsbctl ecb-wr <addr> <val>         write an HSB register over ECB
  *   hsbctl hsb-reset                   pulse HSB's reset and wait for init_done
  *   hsbctl run -H <coprocessor ip> [-p port] [-n rounds] [-m sw|hw] [-P period_us]
- *              [-t timeout_us] [-F fpga_ip] [-o rtt.csv]
+ *              [-t timeout_us] [-F fpga_ip] [-o rtt.csv] [-f bl16|cuqr] [-b arg_len]
+ *              [-i function] [-v]
  *                                      session with hsb-echo: handshake, program HSB, run
+ *   hsbctl run -f cuqr -E '<endpoint>' -A <rth ip> -M <rth mac> [...]
+ *                                      the same against a cudaq-realtime host (no handshake)
  *   hsbctl trace <file> [count]        dump the RTT trace (hif cycles) as text
  */
 #define _GNU_SOURCE
@@ -18,15 +21,18 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 
+#include "cuqr.h"
 #include "hsb_handshake.h"
 #include "hwhs.h"
 
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
 #include <inttypes.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <stddef.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -44,6 +50,14 @@ struct request {
     uint8_t pad[FRAME_BYTES - 24];
 };
 _Static_assert(sizeof(struct request) == FRAME_BYTES, "request layout");
+
+/* What a round sends: a BL16 request (struct request) or a CUQR frame (cuqr.h). */
+struct frame {
+    int cuqr;
+    uint32_t function_id; /* CUQR */
+    uint32_t arg_len;     /* CUQR argument bytes, <= CUQR_MAX_ARG */
+    int verbose;          /* print the first request and reply */
+};
 
 static uint32_t parse_u32(const char *s) { return (uint32_t)strtoul(s, NULL, 0); }
 
@@ -171,7 +185,65 @@ static void print_a72(uint64_t *ns, uint32_t n)
            ns[n - 1]);
 }
 
-static int run_sw(struct hwhs *h, uint32_t rounds, const char *csv)
+/* CUQR request for round `i` */
+static void cuqr_request(const struct frame *fr, uint8_t *f, uint32_t i)
+{
+    // header and arguments are changed every round
+    struct cuqr_header hd = {
+        .magic = CUQR_MAGIC, .function_id = fr->function_id, .arg_len = fr->arg_len};
+    memset(f, 0, FRAME_BYTES);
+    memcpy(f, &hd, sizeof(hd));
+    for (uint32_t k = 0; k < fr->arg_len; k++) {
+        f[sizeof(hd) + k] = (uint8_t)(i + k);
+    }
+}
+
+/* 0 if `r` answers `q` */
+static int cuqr_check(const uint8_t *q, const uint8_t *r)
+{
+    // Check if the reply is a valid CUQS response
+    struct cuqr_header qh;
+    struct cuqr_response rh;
+    memcpy(&qh, q, sizeof(qh));
+    memcpy(&rh, r, sizeof(rh));
+    if (rh.magic != CUQS_MAGIC || rh.status != 0 || rh.result_len != qh.arg_len) {
+        return -1;
+    }
+
+    // Check if the reply is a valid RPC_INCREMENT response
+    for (uint32_t k = 0; qh.function_id == CUQR_RPC_INCREMENT && k < qh.arg_len; k++) {
+        if (r[sizeof(rh) + k] != (uint8_t)(q[sizeof(qh) + k] + 1)) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static void print_bytes(const uint8_t *f, uint32_t n)
+{
+    for (uint32_t k = 0; k < n; k++) {
+        printf("%s%02x", k % 16 ? " " : "\n    ", f[k]);
+    }
+    printf("\n");
+}
+
+static void cuqr_print(const uint8_t *q, const uint8_t *r)
+{
+    struct cuqr_header qh;
+    struct cuqr_response rh;
+    memcpy(&qh, q, sizeof(qh));
+    memcpy(&rh, r, sizeof(rh));
+    printf("request: magic 0x%08x function_id 0x%08x arg_len %u request_id (stamped by hwhs) "
+           "ptp_timestamp %" PRIu64,
+           qh.magic, qh.function_id, qh.arg_len, qh.ptp_timestamp);
+    print_bytes(q, (uint32_t)sizeof(qh) + qh.arg_len);
+    uint32_t n = rh.result_len <= CUQR_MAX_ARG ? rh.result_len : 0;
+    printf("reply:   magic 0x%08x status %d result_len %u request_id %u ptp_timestamp %" PRIu64,
+           rh.magic, rh.status, rh.result_len, rh.request_id, rh.ptp_timestamp);
+    print_bytes(r, (uint32_t)sizeof(rh) + n);
+}
+
+static int run_sw(struct hwhs *h, const struct frame *fr, uint32_t rounds, const char *csv)
 {
     uint64_t *rtt = calloc(rounds, sizeof(*rtt));
     uint64_t *a72 = calloc(rounds, sizeof(*a72));
@@ -185,12 +257,18 @@ static int run_sw(struct hwhs *h, uint32_t rounds, const char *csv)
     }
 
     for (uint32_t i = 0; i < rounds; i++) {
-        struct request q = {
-            .value = 0x1000000000ull + i, .decoder_id = 0, .round_id = i, .attempt = 0};
-        struct request r;
+        uint8_t q[FRAME_BYTES], r[HWHS_SLOT_BYTES];
+        if (fr->cuqr) {
+            cuqr_request(fr, q, i);
+        }
+        else {
+            struct request rq = {
+                .value = 0x1000000000ull + i, .decoder_id = 0, .round_id = i, .attempt = 0};
+            memcpy(q, &rq, sizeof(rq));
+        }
         uint64_t cycles = 0;
         uint64_t t0 = mono_ns();
-        int rc = hwhs_round(h, &q, sizeof(q), &r, &cycles);
+        int rc = hwhs_round(h, q, sizeof(q), r, &cycles);
         uint64_t t1 = mono_ns();
         if (rc < 0) {
             free(rtt);
@@ -204,7 +282,10 @@ static int run_sw(struct hwhs *h, uint32_t rounds, const char *csv)
             timeouts++;
             continue;
         }
-        if (r.value != q.value) {
+        if (fr->cuqr && fr->verbose && ok == 0) {
+            cuqr_print(q, r);
+        }
+        if (fr->cuqr ? cuqr_check(q, r) != 0 : memcmp(r, q, 8) != 0) { /* BL16: the u64 value */
             bad++;
         }
         a72[ok] = t1 - t0;
@@ -214,8 +295,8 @@ static int run_sw(struct hwhs *h, uint32_t rounds, const char *csv)
                     t1 - t0);
         }
     }
-    printf("sw-loop: %u replies, %u timeouts, %u value mismatches, %u stale packets\n", ok,
-           timeouts, bad, hwhs_rd(h, HWHS_STALE_CNT));
+    printf("sw-loop: %u replies, %u timeouts, %u %s, %u stale packets\n", ok, timeouts, bad,
+           fr->cuqr ? "bad replies" : "value mismatches", hwhs_rd(h, HWHS_STALE_CNT));
     print_stats(h, rtt, ok);
     print_a72(a72, ok);
     free(rtt);
@@ -226,21 +307,32 @@ static int run_sw(struct hwhs *h, uint32_t rounds, const char *csv)
     return timeouts || bad ? 1 : 0;
 }
 
-static int run_hw(struct hwhs *h, uint32_t rounds, double period_us, const char *csv)
+static int run_hw(struct hwhs *h, const struct frame *fr, uint32_t rounds, double period_us,
+                  const char *csv)
 {
     const uint32_t table = 256;
-    struct request *syn = calloc(table, sizeof(*syn));
-    struct request *exp = calloc(table, sizeof(*exp));
+    uint8_t *syn = calloc(table, FRAME_BYTES);
+    uint8_t *exp = calloc(table, FRAME_BYTES);
     struct hwhs_demo_result res;
     if (!syn || !exp) {
         return -1;
     }
 
+    /* transport_demo compares the first 16 reply bytes with the seq dword masked */
     for (uint32_t i = 0; i < table; i++) {
-        syn[i].value = 0x2000000000ull + i;
-        syn[i].round_id = i;
-        /* an echoing coprocessor returns the first 16 bytes; transport_demo masks the seq */
-        exp[i].value = syn[i].value;
+        if (fr->cuqr) {
+            /* CUQS, status 0, result_len: the results themselves are checked by sw-loop */
+            struct cuqr_response e = {.magic = CUQS_MAGIC, .result_len = fr->arg_len};
+            cuqr_request(fr, syn + (size_t)i * FRAME_BYTES, i);
+            memcpy(exp + (size_t)i * FRAME_BYTES, &e, sizeof(e));
+        }
+        else {
+            /* an echoing coprocessor returns the first 16 bytes */
+            struct request q = {.value = 0x2000000000ull + i, .round_id = i};
+            struct request e = {.value = q.value};
+            memcpy(syn + (size_t)i * FRAME_BYTES, &q, sizeof(q));
+            memcpy(exp + (size_t)i * FRAME_BYTES, &e, sizeof(e));
+        }
     }
     uint64_t period = (uint64_t)(period_us * h->clk_hz / 1e6);
     int timeout_ms = (int)(rounds * (period_us / 1000.0 + 1.0)) + 2000;
@@ -273,16 +365,61 @@ static int run_hw(struct hwhs *h, uint32_t rounds, double period_us, const char 
     return rc ? rc : (res.timeouts || res.errors ? 1 : 0);
 }
 
+/* cudaq-realtime host endpoint. */
+static int parse_endpoint(const char *text, struct hwhs_dp *dp, char *peer_ip, size_t peer_len)
+{
+    char *copy = strdup(text), *save = NULL;
+    unsigned seen = 0;
+    for (char *t = strtok_r(copy, " \t\n", &save); t; t = strtok_r(NULL, " \t\n", &save)) {
+        char *v = strchr(t, '=');
+        if (!v) {
+            continue;
+        }
+        *v++ = 0;
+        if (!strcmp(t, "qp")) {
+            dp->qpn = parse_u32(v);
+            seen |= 1;
+        }
+        else if (!strcmp(t, "rkey")) {
+            dp->rkey = parse_u32(v);
+            seen |= 2;
+        }
+        else if (!strcmp(t, "buffer_addr")) {
+            dp->ring_iova = strtoull(v, NULL, 0);
+            seen |= 4;
+        }
+        else if (!strcmp(t, "slot_size")) {
+            dp->ring_pitch = parse_u32(v);
+            seen |= 8;
+        }
+        else if (!strcmp(t, "num_slots")) {
+            dp->ring_slots = parse_u32(v);
+            seen |= 16;
+        }
+        else if (!strcmp(t, "peer_ip")) {
+            snprintf(peer_ip, peer_len, "%s", v);
+        }
+    }
+    free(copy);
+    if (seen != 31) {
+        fprintf(stderr, "run: endpoint needs qp, rkey, buffer_addr, slot_size and num_slots\n");
+        return -1;
+    }
+    return 0;
+}
+
 static int cmd_run(struct hwhs *h, int argc, char **argv)
 {
     const char *host = NULL, *csv = NULL, *mode = "sw", *fpga_ip = "192.168.0.2";
+    const char *endpoint = NULL, *rth_ip = NULL, *rth_mac = NULL;
     int port = HSB_HS_PORT, c;
     uint32_t rounds = 10000;
     double period_us = 10.0, timeout_us = 1000.0;
     static const uint8_t fpga_mac[6] = HWHS_HSB_MAC0;
+    struct frame fr = {.function_id = CUQR_RPC_INCREMENT, .arg_len = 8};
 
     optind = 1;
-    while ((c = getopt(argc, argv, "H:p:n:m:P:t:F:o:")) != -1) {
+    while ((c = getopt(argc, argv, "H:p:n:m:P:t:F:o:f:b:i:vE:A:M:")) != -1) {
         switch (c) {
         case 'H':
             host = optarg;
@@ -308,65 +445,152 @@ static int cmd_run(struct hwhs *h, int argc, char **argv)
         case 'o':
             csv = optarg;
             break;
+        case 'f':
+            if (strcmp(optarg, "bl16") && strcmp(optarg, "cuqr")) {
+                fprintf(stderr, "run: -f bl16 or -f cuqr\n");
+                return 2;
+            }
+            fr.cuqr = !strcmp(optarg, "cuqr");
+            break;
+        case 'b':
+            fr.arg_len = parse_u32(optarg);
+            break;
+        case 'i': /* a number, or a handler name to hash */
+            fr.function_id =
+                isdigit((unsigned char)optarg[0]) ? parse_u32(optarg) : cuqr_fnv1a(optarg);
+            break;
+        case 'v':
+            fr.verbose = 1;
+            break;
+        case 'E':
+            endpoint = optarg;
+            break;
+        case 'A':
+            rth_ip = optarg;
+            break;
+        case 'M':
+            rth_mac = optarg;
+            break;
         default:
             return 2;
         }
     }
-    if (!host) {
-        fprintf(stderr, "run: -H <coprocessor management ip> is required\n");
+    if (!host && !endpoint) {
+        fprintf(stderr, "run: -H <coprocessor management ip> or -E <endpoint> is required\n");
         return 2;
     }
+    if (endpoint && (!fr.cuqr || !rth_ip || !rth_mac)) {
+        fprintf(stderr, "run: -E needs -f cuqr, -A <host RoCE ip> and -M <host RoCE mac>\n");
+        return 2;
+    }
+    if (fr.cuqr && fr.arg_len > CUQR_MAX_ARG) {
+        fprintf(stderr, "run: -b %u: a CUQR request carries at most %u bytes in one beat\n",
+                fr.arg_len, CUQR_MAX_ARG);
+        return 2;
+    }
+    if (fr.cuqr && hwhs_rd(h, HWHS_SEQ_OFF) != offsetof(struct cuqr_header, request_id)) {
+        fprintf(stderr, "run: hwhs stamps its seq at byte %u, CUQR's request_id is at 12\n",
+                hwhs_rd(h, HWHS_SEQ_OFF));
+        return 1;
+    }
 
-    /* 1-3: handshake */
-    int fd = tcp_connect(host, port);
-    if (fd < 0) {
-        return 1;
-    }
-    struct hsb_hs_host hi;
-    if (read_full(fd, &hi, sizeof(hi)) || hi.magic != HSB_HS_MAGIC ||
-        hi.version != HSB_HS_VERSION) {
-        fprintf(stderr, "run: bad handshake from %s\n", host);
-        close(fd);
-        return 1;
-    }
+    uint32_t reply_bytes =
+        fr.cuqr ? (uint32_t)sizeof(struct cuqr_response) + fr.arg_len : REPLY_BYTES;
     struct in_addr fa;
     inet_pton(AF_INET, fpga_ip, &fa);
-    struct hsb_hs_fpga fo = {
-        .magic = HSB_HS_MAGIC,
-        .version = HSB_HS_VERSION,
-        .ip = ntohl(fa.s_addr),
-        .qpn = HSB_STX_QPN(0),
-        .frame_bytes = FRAME_BYTES,
-        .reply_bytes = REPLY_BYTES,
-        .seq_off = hwhs_rd(h, HWHS_SEQ_OFF),
-    };
-    memcpy(fo.mac, fpga_mac, 6);
-    struct hsb_hs_ready rd;
-    if (write_full(fd, &fo, sizeof(fo)) || read_full(fd, &rd, sizeof(rd)) ||
-        rd.magic != HSB_HS_MAGIC) {
-        fprintf(stderr, "run: coprocessor did not get ready\n");
-        close(fd);
-        return 1;
+    struct hwhs_dp dp = {.frame_bytes = FRAME_BYTES};
+    int fd = -1;
+    if (endpoint) {
+        /* cudaq-realtime host: the ring comes from its endpoint, its address from -A and -M */
+        char peer_ip[64] = "";
+        struct in_addr ra;
+        unsigned m[6];
+        if (parse_endpoint(endpoint, &dp, peer_ip, sizeof(peer_ip))) {
+            return 2;
+        }
+        if (inet_pton(AF_INET, rth_ip, &ra) != 1 ||
+            sscanf(rth_mac, "%x:%x:%x:%x:%x:%x", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) != 6) {
+            fprintf(stderr, "run: bad -A %s or -M %s\n", rth_ip, rth_mac);
+            return 2;
+        }
+        if (peer_ip[0] && strcmp(peer_ip, fpga_ip)) {
+            fprintf(stderr, "run: the host expects the board at %s, HSB is at %s (-F)\n", peer_ip,
+                    fpga_ip);
+            return 2;
+        }
+        dp.host_ip = ntohl(ra.s_addr);
+        for (int k = 0; k < 6; k++) {
+            dp.host_mac[k] = (uint8_t)m[k];
+        }
+        dp.imm = 1;
+        printf("cudaq-realtime host: qpn 0x%06x rkey 0x%08x ring %u x %u B @ 0x%" PRIx64
+               ", %s %s\n",
+               dp.qpn, dp.rkey, dp.ring_slots, dp.ring_pitch, dp.ring_iova, rth_ip, rth_mac);
+        if (dp.ring_slots && rounds % dp.ring_slots) {
+            printf("note: %u rounds leave the host's ring at slot %u; it expects slot 0 next time, "
+                   "so restart it before another run\n",
+                   rounds, rounds % dp.ring_slots);
+        }
     }
-    printf("coprocessor: qpn 0x%06x rkey 0x%08x ring %u x %u B @ 0x%" PRIx64 ", %u.%u.%u.%u %s\n",
-           hi.qpn, hi.rkey, hi.ring_slots, hi.ring_pitch, hi.ring_iova, hi.ip >> 24,
-           (hi.ip >> 16) & 255, (hi.ip >> 8) & 255, hi.ip & 255,
-           hi.imm ? "WRITE_WITH_IMM" : "WRITE");
+    else {
+        /* 1-3: handshake */
+        fd = tcp_connect(host, port);
+        if (fd < 0) {
+            return 1;
+        }
+        struct hsb_hs_host hi;
+        if (read_full(fd, &hi, sizeof(hi)) || hi.magic != HSB_HS_MAGIC ||
+            hi.version != HSB_HS_VERSION) {
+            fprintf(stderr, "run: bad handshake from %s\n", host);
+            close(fd);
+            return 1;
+        }
+        if (fr.cuqr && !hi.imm) {
+            fprintf(stderr, "run: CUQR needs WRITE_WITH_IMM; start hsb-echo with -f cuqr\n");
+            close(fd);
+            return 1;
+        }
+        struct hsb_hs_fpga fo = {
+            .magic = HSB_HS_MAGIC,
+            .version = HSB_HS_VERSION,
+            .ip = ntohl(fa.s_addr),
+            .qpn = HSB_STX_QPN(0),
+            .frame_bytes = FRAME_BYTES,
+            .reply_bytes = reply_bytes,
+            .seq_off = hwhs_rd(h, HWHS_SEQ_OFF),
+        };
+        memcpy(fo.mac, fpga_mac, 6);
+        struct hsb_hs_ready rd;
+        if (write_full(fd, &fo, sizeof(fo)) || read_full(fd, &rd, sizeof(rd)) ||
+            rd.magic != HSB_HS_MAGIC) {
+            fprintf(stderr, "run: coprocessor did not get ready\n");
+            close(fd);
+            return 1;
+        }
+        printf("coprocessor: qpn 0x%06x rkey 0x%08x ring %u x %u B @ 0x%" PRIx64
+               ", %u.%u.%u.%u %s\n",
+               hi.qpn, hi.rkey, hi.ring_slots, hi.ring_pitch, hi.ring_iova, hi.ip >> 24,
+               (hi.ip >> 16) & 255, (hi.ip >> 8) & 255, hi.ip & 255,
+               hi.imm ? "WRITE_WITH_IMM" : "WRITE");
+        dp.qpn = hi.qpn;
+        dp.rkey = hi.rkey;
+        dp.ring_iova = hi.ring_iova;
+        dp.ring_pitch = hi.ring_pitch;
+        dp.ring_slots = hi.ring_slots;
+        dp.host_ip = hi.ip;
+        dp.imm = hi.imm;
+        memcpy(dp.host_mac, hi.mac, 6);
+    }
+    if (fr.cuqr) {
+        printf("CUQR: function_id 0x%08x, %u argument bytes, %u-byte replies\n", fr.function_id,
+               fr.arg_len, reply_bytes);
+    }
 
     /* 4: HSB from reset (slot pointer and PSN back to 0), then the data plane */
-    struct hwhs_dp dp = {
-        .qpn = hi.qpn,
-        .rkey = hi.rkey,
-        .ring_iova = hi.ring_iova,
-        .ring_pitch = hi.ring_pitch,
-        .ring_slots = hi.ring_slots,
-        .host_ip = hi.ip,
-        .frame_bytes = FRAME_BYTES,
-        .imm = hi.imm,
-    };
-    memcpy(dp.host_mac, hi.mac, 6);
     if (hwhs_hsb_reset(h, 1000) || hwhs_hsb_configure(h, &dp)) {
-        close(fd);
+        if (fd >= 0) {
+            close(fd);
+        }
         return 1;
     }
 
@@ -377,10 +601,13 @@ static int cmd_run(struct hwhs *h, int argc, char **argv)
     hwhs_wr(h, HWHS_RING_LEN, 256);
     hwhs_wr(h, HWHS_FLAGS, 1);
 
-    int rc = strcmp(mode, "hw") == 0 ? run_hw(h, rounds, period_us, csv) : run_sw(h, rounds, csv);
+    int rc = strcmp(mode, "hw") == 0 ? run_hw(h, &fr, rounds, period_us, csv)
+                                     : run_sw(h, &fr, rounds, csv);
 
     hwhs_hsb_stop(h);
-    close(fd);
+    if (fd >= 0) {
+        close(fd);
+    }
     return rc < 0 ? 1 : rc;
 }
 
@@ -416,7 +643,9 @@ static void usage(void)
         "       hsbctl ecb-wr <addr> <val>\n"
         "       hsbctl hsb-reset\n"
         "       hsbctl run -H <coprocessor ip> [-p port] [-n rounds] [-m sw|hw] [-P period_us]\n"
-        "                  [-t timeout_us] [-F fpga_ip] [-o rtt.csv]\n"
+        "                  [-t timeout_us] [-F fpga_ip] [-o rtt.csv] [-f bl16|cuqr] [-b arg_len]\n"
+        "                  [-i function] [-v]\n"
+        "       hsbctl run -f cuqr -E '<endpoint>' -A <host ip> -M <host mac> [...]\n"
         "       hsbctl trace <file> [count]\n");
 }
 

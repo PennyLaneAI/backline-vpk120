@@ -49,6 +49,7 @@ rm -rf "$META/recipes-apps/hwhs-tools"
 cp -R "$SRC/recipes-apps/hwhs-tools" "$META/recipes-apps/"
 cp "$REPO/sw/lib/hwhs/hwhs.c" "$REPO/sw/lib/hwhs/hwhs.h" \
    "$REPO/common/include/hwhs_regs.h" "$REPO/common/include/hsb_regs.h" "$REPO/common/include/hsb_handshake.h" \
+   "$REPO/common/include/cuqr.h" \
    "$REPO/sw/apps/hsbctl/hsbctl.c" "$REPO/sw/apps/mrmac-up/mrmac-up.c" \
    "$META/recipes-apps/hwhs-tools/files/"
 

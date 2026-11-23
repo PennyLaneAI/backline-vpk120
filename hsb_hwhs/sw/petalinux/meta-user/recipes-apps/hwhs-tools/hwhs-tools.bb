@@ -13,6 +13,7 @@ SRC_URI = " \
     file://hwhs_regs.h \
     file://hsb_regs.h \
     file://hsb_handshake.h \
+    file://cuqr.h \
     file://hsbctl.c \
     file://mrmac-up.c \
 "

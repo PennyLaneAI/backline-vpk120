@@ -7,7 +7,8 @@ CFLAGS   ?= -O2 -Wall -Wextra
 CPPFLAGS += -Ilib/hwhs -I../common/include
 OUT    ?= build
 
-HDRS = lib/hwhs/hwhs.h ../common/include/hwhs_regs.h ../common/include/hsb_regs.h ../common/include/hsb_handshake.h
+HDRS = lib/hwhs/hwhs.h ../common/include/hwhs_regs.h ../common/include/hsb_regs.h ../common/include/hsb_handshake.h \
+       ../common/include/cuqr.h
 
 all: $(OUT)/hsbctl $(OUT)/mrmac-up
 

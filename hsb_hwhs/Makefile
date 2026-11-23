@@ -72,6 +72,8 @@ test:
 	@mkdir -p $(BUILD)/test
 	$(CC) -Wall -Wextra -Icommon/include -Isw/lib/hwhs -o $(BUILD)/test/test_ecb_frame sw/tests/test_ecb_frame.c
 	$(BUILD)/test/test_ecb_frame
+	$(CC) -Wall -Wextra -Icommon/include -Isw/lib/hwhs -o $(BUILD)/test/test_cuqr sw/tests/test_cuqr.c
+	$(BUILD)/test/test_cuqr
 
 check: lint sim dryrun test
 
