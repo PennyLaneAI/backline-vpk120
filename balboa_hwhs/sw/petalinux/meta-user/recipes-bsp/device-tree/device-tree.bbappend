@@ -2,13 +2,7 @@
 # Copyright 2026 Xanadu Quantum Technologies Inc.
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
-# versal-vpk120-revB.dtsi is Xilinx's GPL-2.0 board dtsi, verbatim. It is not in this repo:
-# sw/petalinux/build.sh copies it from build/amd/sw (make amd). The include order is the one the
-# ERNIC build booted with.
-SRC_URI:append = " file://system-user.dtsi \
-                   file://versal-vpk120-revB.dtsi"
-
-do_configure:append() {
-	echo "#include \"system-user.dtsi\"" >> "${DT_FILES_PATH}/system-top.dts"
-	echo "#include \"versal-vpk120-revB.dtsi\"" >> "${DT_FILES_PATH}/system-top.dts"
-}
+# The board fragment (versal-vpk120-revb.dtsi) comes from the stock DTG flow: the VPK120 BSP sets
+# CONFIG_SUBSYSTEM_MACHINE_NAME="versal-vpk120-revb", so the generated system-top.dts includes it
+# from device-tree-xlnx, followed by pcw.dtsi and our system-user.dtsi.
+SRC_URI:append = " file://system-user.dtsi"

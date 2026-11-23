@@ -10,8 +10,8 @@
 # out_dir (default build/amd) gets:
 #   hw/  vpk120m_ernic_ref_design.tcl, hdl/mrmac_0_exdes_ernic.sv, hdl/mrmac_0_axis_stream_mux.sv,
 #        clk_wizard_0.xci, default.xdc, v350_ddr4_single_lp0.xdc   (Vivado: hw/scripts/create_project.tcl)
-#   sw/  versal-vpk120-revB.dtsi, the board device tree             (PetaLinux: sw/petalinux/build.sh)
-#        xilinx-vpk120-xsct-v2024.2-final.bsp                       with --bsp
+#   sw/  xilinx-vpk120-xsct-v2024.2-final.bsp                       with --bsp
+#
 set -euo pipefail
 
 SRC=""
@@ -29,11 +29,6 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${OUT:-$REPO/build/amd}"
 BASE="reference design VPK120_mrmac_rev_1.3/reference_designs_VPK120_mrmac/designs/2024.2/vpk120m_ernic_ref_design"
 
-# The board device tree (Xilinx, GPL-2.0) comes from the ERNIC software package in the same
-# download, so that no AMD file has to live in this repo.
-ERNIC_SW_ZIP="ERNIC-2024_2_VPK120_RC6.zip"
-BOARD_DTSI="ERNIC-2024_2_VPK120_RC6/code/meta-user/recipes-bsp/vpk120_mrmac/device-tree/files/versal-vpk120-revB.dtsi"
-
 # The files the build reads, as shipped in rev 1.3 (ERNIC-2024_2_VPK120_RC6).
 EXPECTED_SHA256="\
 6ff1a33c83a62ccd39a615f274b0a80b5c1eec6c1418795da385b004f6cdfd32  hw/vpk120m_ernic_ref_design.tcl
@@ -41,8 +36,7 @@ EXPECTED_SHA256="\
 461dedea110f26244f20a0dec22d3993c7ed37f7cfdd45312716c8cbeaee903c  hw/hdl/mrmac_0_axis_stream_mux.sv
 c52c0b93b48858ad4654b1f91321e7fe5f2cedd25591dbd9ba17f7f07ef3b914  hw/clk_wizard_0.xci
 605b6841123b8b877861bdc8c447080834e469d12e6b8d66ee7b985fa6f3fe73  hw/v350_ddr4_single_lp0.xdc
-8f0fdc4171ef3bdbe93117a7e5c347edf6e1456c1653c4aeef69fdb0ea482b80  hw/default.xdc
-5423de75ca463fde88fb0b4ef57d70b62350ecca0816226e4e7e0869c230de77  sw/versal-vpk120-revB.dtsi"
+8f0fdc4171ef3bdbe93117a7e5c347edf6e1456c1653c4aeef69fdb0ea482b80  hw/default.xdc"
 
 TMP=""
 cleanup() { if [ -n "$TMP" ]; then rm -rf "$TMP"; fi; }
@@ -50,7 +44,7 @@ trap cleanup EXIT
 
 if [ -f "$SRC" ]; then
     TMP="$(mktemp -d)"
-    members=("$BASE/hw/hw/*" "$BASE/sw/$ERNIC_SW_ZIP")
+    members=("$BASE/hw/hw/*")
     [ "$WITH_BSP" = 1 ] && members+=("$BASE/sw/xilinx-vpk120-xsct-v2024.2-final.bsp")
     unzip -q "$SRC" "${members[@]}" -d "$TMP"
     ROOT="$TMP/$BASE"
@@ -66,15 +60,9 @@ fi
     exit 1
 }
 
-[ -f "$ROOT/sw/$ERNIC_SW_ZIP" ] || {
-    echo "ERROR: no sw/$ERNIC_SW_ZIP in $SRC (the board device tree comes from it)" >&2
-    exit 1
-}
-
 rm -rf "$OUT"
 mkdir -p "$OUT/hw" "$OUT/sw"
 cp -R "$ROOT/hw/hw/." "$OUT/hw/"
-unzip -p "$ROOT/sw/$ERNIC_SW_ZIP" "$BOARD_DTSI" > "$OUT/sw/versal-vpk120-revB.dtsi"
 
 if [ "$WITH_BSP" = 1 ]; then
     cp "$ROOT/sw/xilinx-vpk120-xsct-v2024.2-final.bsp" "$OUT/sw/"

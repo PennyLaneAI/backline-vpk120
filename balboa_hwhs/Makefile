@@ -50,8 +50,7 @@ hw: project
 	    -tclargs -xpr $(PROJ)/backline_roce.xpr -jobs $(JOBS)
 
 petalinux:
-	sw/petalinux/build.sh $(PROJ)/backline_roce.xsa $(BSP) $(BUILD)/amd/sw/versal-vpk120-revB.dtsi \
-	    $(BUILD)/petalinux
+	sw/petalinux/build.sh $(PROJ)/backline_roce.xsa $(BSP) $(BUILD)/petalinux
 
 boot:
 	cd $(BUILD)/petalinux/backline-roce && xsdb jtag-boot.tcl

@@ -61,3 +61,39 @@
 		reg = <0x0 0x93000000 0x0 0x10000>;
 	};
 };
+
+// Keep last. re-includes versal.dtsi (resetting every PS status to "disabled"), 
+// then the VPK120 board fragment, memory@0 and the enables below.
+#include "versal.dtsi"
+#include "versal-clk.dtsi"
+#include "versal-vpk120-revb.dtsi"
+
+/ {
+	memory: memory@0 {
+		device_type = "memory";
+		reg = <0 0 0 0x80000000>, <0x8 0x0 0x2 0x80000000>;
+	};
+};
+
+&qspi { status = "okay"; };
+&usb0 { status = "okay"; };
+&dwc3_0 { status = "okay"; };
+&sdhci1 { status = "okay"; };
+&serial0 { status = "okay"; };
+&i2c0 { status = "okay"; };
+&i2c1 { status = "okay"; };
+&gem0 { status = "okay"; };
+&can1 { status = "okay"; };
+&dcc { status = "okay"; };
+&rtc { status = "okay"; };
+&gpio0 { status = "okay"; };
+&gpio1 { status = "okay"; };
+&watchdog { status = "okay"; };
+&lpd_dma_chan0 { status = "okay"; };
+&lpd_dma_chan1 { status = "okay"; };
+&lpd_dma_chan2 { status = "okay"; };
+&lpd_dma_chan3 { status = "okay"; };
+&lpd_dma_chan4 { status = "okay"; };
+&lpd_dma_chan5 { status = "okay"; };
+&lpd_dma_chan6 { status = "okay"; };
+&lpd_dma_chan7 { status = "okay"; };
