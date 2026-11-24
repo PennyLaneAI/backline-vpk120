@@ -315,7 +315,7 @@ int hwhs_hsb_configure(struct hwhs *h, const struct hwhs_dp *dp)
                                      ((uint32_t)dp->host_mac[4] << 8) | dp->host_mac[5]);
     ECB_WR(vp + HSB_DP_HOST_MAC_HIGH, ((uint32_t)dp->host_mac[0] << 8) | dp->host_mac[1]);
     ECB_WR(vp + HSB_DP_HOST_IP, dp->host_ip);
-    ECB_WR(vp + HSB_DP_HOST_UDP_PORT, HSB_ROCE_UDP_PORT | HSB_MD_DISABLE);
+    ECB_WR(vp + HSB_DP_HOST_UDP_PORT, HSB_ROCE_UDP_PORT | HSB_MD_DISABLE | (dp->imm ? 0 : HSB_IMM_DISABLE));
     ECB_WR(vp + HSB_DP_VLAN, 0);
     ECB_WR(vp + HSB_DP_QP, dp->qpn & 0xFFFFFF);
     ECB_WR(vp + HSB_DP_RKEY, dp->rkey);

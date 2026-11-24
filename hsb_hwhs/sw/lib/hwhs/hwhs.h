@@ -67,6 +67,7 @@ struct hwhs_dp {
     uint32_t host_ip;
     uint8_t host_mac[6];
     uint32_t frame_bytes; /* bytes per request message (64) */
+    uint16_t imm;         /* 1: WRITE_WITH_IMM; 0: plain WRITE (needs patches/0001) */
 };
 
 /* Program HSB data plane 0, sensor 0 and sensor-TX 0. */
