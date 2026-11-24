@@ -199,6 +199,9 @@ int main(int argc, char **argv)
     }
 
     /* ---- device, GID (RoCE v2 over IPv4), MAC ------------------------------------- */
+    /* mlx5: post every send through BlueFlame, and skip the provider's locks (one thread) */
+    setenv("MLX5_POST_SEND_PREFER_BF", "1", 0);
+    setenv("MLX5_SINGLE_THREADED", "1", 0);
     int ndev = 0;
     struct ibv_device **list = ibv_get_device_list(&ndev);
     struct ibv_context *ctx = NULL;
