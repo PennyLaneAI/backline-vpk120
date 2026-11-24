@@ -253,6 +253,24 @@ Check, in order:
    - `tcpdump -ni <roce netdev> udp port 12267` shows HSB's BOOTP announcement about once a
      second.
 
+## Link FEC
+
+`mrmac-up` brings the link up with RS(528,514) FEC. `-f` picks a FEC mode:
+
+| `mrmac-up -f` | `FEC_CONFIG1` | Coprocessor port | Bit errors |
+| --- | --- | --- | --- |
+| `rs` (default) | `0x1008` | FEC auto | Corrected |
+| `mark` | `0x1028` | FEC auto | Detected, the frame is dropped; lower latency |
+| `off` | `0x0000` | FEC off | The frame is dropped; lowest latency |
+
+For `off`, turn FEC off on the coprocessor port first, then run `mrmac-up -f off` on the board:
+
+```bash
+sudo ethtool --set-fec <roce netdev> encoding off    # encoding auto to go back
+```
+
+Check the `mrmac-up -s` to see which mode that board is using, the last field of its status is `FEC_CONFIG1`
+
 ## Run a Session
 
 Start the echo peer on the coprocessor host. It serves one session per start and exits when the
