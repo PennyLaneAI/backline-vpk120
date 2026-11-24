@@ -288,6 +288,55 @@ It exits non-zero on any timeout or reply mismatch.
 Other commands: `hsbctl reg <off> [val]`, `hsbctl ecb-rd|ecb-wr <addr> [val]` (any HSB register),
 `hsbctl hsb-reset`, `hsbctl trace <file>`.
 
+## Run a CUQR Session
+
+`hsbctl` and `hsb-echo` also speak cudaq-realtime's RPC frames (CUQR), so the board can run
+against a cudaq-realtime's realtime host (RTH). The layout is in `common/include/cuqr.h`.
+
+HSB writes each request into ring slot `n mod N` as a UC WRITE_WITH_IMM, with
+`imm = {psn[19:0], slot[11:0]}`. It writes a 64 B window; the slot pitch is a multiple of 128 B. The
+coprocessor answers with a UC SEND of `24 + arg_len` bytes to QP 2.
+
+| Bytes | Request (`CUQR`) | Reply (`CUQS`) |
+| --- | --- | --- |
+| 0-3 | magic `0x43555152` | magic `0x43555153` |
+| 4-7 | `function_id`: `0x191b6322` is `rpc_increment` (`-i`) | `status`: 0, or -1 for an unknown function |
+| 8-11 | `arg_len`: 8 (`-b`, at most 40) | `result_len` |
+| 12-15 | `request_id`: hwhs stamps its seq here | `request_id`, echoed |
+| 16-23 | `ptp_timestamp`: 0 | `ptp_timestamp`, echoed |
+| 24- | arguments, different every round | results: each argument byte plus 1 |
+
+hwhs matches a reply by `request_id`, the same offset as BL16's seq. sw-loop checks every byte of every reply.
+hw-loop's pacer compares the first 16 bytes (magic, status, `result_len`). `-v` prints the first request and reply.
+
+Against `hsb-echo`:
+
+```bash
+host/hsb-echo/hsb-echo -d mlx5_1 -c 4 -f cuqr          # on the coprocessor; -S 512 for 512 B slots
+hsbctl run -H <coprocessor mgmt ip> -f cuqr -n 10000 -v
+hsbctl run -H <coprocessor mgmt ip> -f cuqr -m hw -n 100000 -P 10
+```
+
+With `-f cuqr`, `hsb-echo` asks for WRITE_WITH_IMM, takes each request on its receive completion and
+answers like cudaq-realtime's unified dispatch: `rpc_increment` adds 1 to each argument byte, any
+other `function_id` gets status -1.
+
+Against cudaq-realtime's RTH, CPU dispatch with its CPU RoCE bridge, on the coprocessor host:
+
+```bash
+realtime/build/validation/validation_app --cpu \
+  --bridge="$PWD/realtime/build/lib/libcudaq-realtime-bridge-cpu-roce.so" -- \
+  --device=mlx5_1 --peer-ip=192.168.0.2 --remote-qp=2 --qp_config=hsb_fpga \
+  --num-slots=8 --slot-size=512 --frame-size=32
+```
+
+Wait for `=== App Ready ===`. Then give `hsbctl` the endpoint it printed, and the IP and MAC of the
+host's RoCE interface:
+
+```bash
+hsbctl run -f cuqr -E '<endpoint text>' -A <host RoCE ip> -M <host RoCE mac> -n 1000 -v
+```
+
 ## Checks Without Vivado
 
 ```bash
@@ -297,6 +346,7 @@ make check      # lint + sim + dryrun + test; dryrun needs `make amd` first
 - **`make dryrun`** runs `create_project.tcl` in tclsh with the Vivado commands mocked. It checks
   that every block-design cell, port, pin and address segment the scripts reference exists.
 - **`make test`** checks that the driver builds the ECB frame byte for byte the way the simulated
-  HSB accepted it.
+  HSB accepted it, and that `hsbctl` builds CUQR frames and reads an RTH endpoint as cudaq-realtime
+  defines them.
 
 Versal, and Vivado, are trademarks of Advanced Micro Devices, Inc.

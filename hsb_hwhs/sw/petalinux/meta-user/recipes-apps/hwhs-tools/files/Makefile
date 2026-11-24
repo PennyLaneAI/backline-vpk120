@@ -6,7 +6,7 @@ CPPFLAGS += -I.
 
 all: hsbctl mrmac-up
 
-hsbctl: hsbctl.c hwhs.c hwhs.h hwhs_regs.h hsb_regs.h hsb_handshake.h
+hsbctl: hsbctl.c hwhs.c hwhs.h hwhs_regs.h hsb_regs.h hsb_handshake.h cuqr.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ hsbctl.c hwhs.c
 
 mrmac-up: mrmac-up.c hwhs.c hwhs.h hwhs_regs.h hsb_regs.h

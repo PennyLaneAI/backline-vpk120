@@ -4,7 +4,7 @@
 CFLAGS   ?= -O2 -Wall -Wextra
 CPPFLAGS += -I../../common/include
 
-hsb-echo: hsb_echo.c ../../common/include/hsb_handshake.h
+hsb-echo: hsb_echo.c ../../common/include/hsb_handshake.h ../../common/include/cuqr.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ hsb_echo.c -libverbs
 
 clean:

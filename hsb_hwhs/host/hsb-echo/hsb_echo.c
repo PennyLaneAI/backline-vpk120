@@ -7,11 +7,16 @@
  * patches/0001). hsb-echo answers with a UC SEND of the request's first 16 bytes to QP 2 (HSB
  * sensor-TX 0).
  *
- *   hsb-echo -d mlx5_1 [-i ib_port] [-g gid_index] [-p tcp_port] [-s slots] [-c cpu] [-r] [-I]
+ *   hsb-echo -d mlx5_1 [-i ib_port] [-g gid_index] [-p tcp_port] [-s slots] [-S pitch] [-c cpu]
+ *            [-r] [-I] [-f bl16|cuqr]
  *
+ *   -S  slot pitch in bytes, a multiple of 128 (default 128)
  *   -r  realtime: SCHED_FIFO and /dev/cpu_dma_latency = 0 (needs root)
  *   -I  ask for WRITE_WITH_IMM instead (stock HSB, imm = {psn[19:0], slot[11:0]}), which takes a
  *       receive per request
+ *   -f cuqr  answer cudaq-realtime frames:
+ *       implies -I, takes each request on its receive completion, slot = imm & 0xFFF, and replies
+ *       with CUQS; rpc_increment adds 1 to each argument byte, anything else gets status -1
  *
  * Serves one session (common/include/hsb_handshake.h), then exits. The RoCE interface must
  * be in HSB's subnet (HSB host port 0: 192.168.0.2).
@@ -22,6 +27,7 @@
 #include <sys/mman.h>
 #include <sys/socket.h>
 
+#include "cuqr.h"
 #include "hsb_handshake.h"
 
 #include <arpa/inet.h>
@@ -34,7 +40,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define RING_PITCH 128u /* HSB's page: the smallest slot pitch it can express */
+#define HSB_PAGE 128u /* HSB's page: slot pitches are multiples of it */
 #define MAX_RECV 512u
 #define MAX_SEND 64u
 #define SIGNAL_EVERY 32u
@@ -99,9 +105,49 @@ static inline void cpu_relax(void)
 }
 
 /* The seq dword of a ring slot, as the NIC last wrote it */
-static uint32_t seq_at(const uint8_t *ring, uint32_t slot, uint32_t seq_off)
+static uint32_t seq_at(const uint8_t *ring, unsigned pitch, uint32_t slot, uint32_t seq_off)
 {
-    return *(const volatile uint32_t *)(ring + (size_t)slot * RING_PITCH + seq_off);
+    return *(const volatile uint32_t *)(ring + (size_t)slot * pitch + seq_off);
+}
+
+/* Answer the CUQR request `req`. Returns the status. */
+static int reply_cuqr(struct ibv_qp *qp, const uint8_t *req, uint32_t frame_bytes,
+                      uint32_t reply_bytes, uint64_t wr_id, int sig)
+{
+    uint8_t out[64] = {0};
+    struct cuqr_header q;
+    memcpy(&q, req, sizeof(q));
+
+    // Check if the request is a valid CUQR request
+    struct cuqr_response r = {.magic = CUQS_MAGIC,
+                              .request_id = q.request_id,
+                              .ptp_timestamp = q.ptp_timestamp};
+    if (q.magic == CUQR_MAGIC && q.function_id == CUQR_RPC_INCREMENT &&
+        sizeof(q) + q.arg_len <= frame_bytes &&
+        sizeof(r) + q.arg_len <= reply_bytes) {
+      r.result_len = q.arg_len;
+      for (uint32_t k = 0; k < q.arg_len; k++) {
+        out[sizeof(r) + k] = (uint8_t)(req[sizeof(q) + k] + 1);
+      }
+    } else {
+      r.status = -1;
+    }
+
+    // Copy the response to the output buffer
+    memcpy(out, &r, sizeof(r));
+
+    // Post the send
+    struct ibv_sge sge = {.addr = (uintptr_t)out, .length = reply_bytes};
+    struct ibv_send_wr wr = {.wr_id = wr_id,
+                             .sg_list = &sge,
+                             .num_sge = 1,
+                             .opcode = IBV_WR_SEND,
+                             .send_flags = IBV_SEND_INLINE | (sig ? IBV_SEND_SIGNALED : 0)};
+    struct ibv_send_wr *bad;
+    if (ibv_post_send(qp, &wr, &bad)) {
+        die("ibv_post_send");
+    }
+    return r.status;
 }
 
 /* Retire one signaled send completion, i.e. SIGNAL_EVERY sends. Returns 0 if none is ready. */
@@ -137,10 +183,10 @@ static void post_recvs(struct ibv_qp *qp, unsigned n)
 int main(int argc, char **argv)
 {
     const char *devname = NULL;
-    int ib_port = 1, gid_index = 3, tcp_port = HSB_HS_PORT, cpu = -1, rt = 0, imm = 0, c;
-    unsigned slots = 256;
+    int ib_port = 1, gid_index = 3, tcp_port = HSB_HS_PORT, cpu = -1, rt = 0, imm = 0, cuqr = 0, c;
+    unsigned slots = 256, pitch = HSB_PAGE;
 
-    while ((c = getopt(argc, argv, "d:i:g:p:s:c:rI")) != -1) {
+    while ((c = getopt(argc, argv, "d:i:g:p:s:S:c:rIf:")) != -1) {
         switch (c) {
         case 'd':
             devname = optarg;
@@ -157,6 +203,9 @@ int main(int argc, char **argv)
         case 's':
             slots = (unsigned)atoi(optarg);
             break;
+        case 'S':
+            pitch = (unsigned)atoi(optarg);
+            break;
         case 'c':
             cpu = atoi(optarg);
             break;
@@ -166,14 +215,24 @@ int main(int argc, char **argv)
         case 'I':
             imm = 1;
             break;
+        case 'f':
+            if (strcmp(optarg, "bl16") && strcmp(optarg, "cuqr")) {
+                fprintf(stderr, "hsb-echo: -f bl16 or -f cuqr\n");
+                return 2;
+            }
+            cuqr = !strcmp(optarg, "cuqr");
+            imm |= cuqr; /* only a WRITE_WITH_IMM tells which slot a CUQR request is in */
+            break;
         default:
             fprintf(stderr, "usage: hsb-echo -d <ibdev> [-i ib_port] [-g gid_index] [-p tcp_port] "
-                            "[-s slots] [-c cpu] [-r] [-I]\n");
+                            "[-s slots] [-S pitch] [-c cpu] [-r] [-I] [-f bl16|cuqr]\n");
             return 2;
         }
     }
-    if (!devname || slots == 0 || slots > 4096) {
-        fprintf(stderr, "hsb-echo: -d <ibdev> is required; slots must be 1..4096\n");
+    if (!devname || slots == 0 || slots > 4096 || pitch == 0 || pitch % HSB_PAGE) {
+        fprintf(stderr, "hsb-echo: -d <ibdev> is required; slots must be 1..4096 and the pitch a "
+                        "multiple of %u\n",
+                HSB_PAGE);
         return 2;
     }
     if (cpu >= 0) {
@@ -276,7 +335,7 @@ int main(int argc, char **argv)
         die("ibv_create_qp (UC)");
     }
 
-    size_t ring_len = (size_t)slots * RING_PITCH;
+    size_t ring_len = (size_t)slots * pitch;
     uint8_t *ring = aligned_alloc(4096, (ring_len + 4095) & ~(size_t)4095);
     if (!ring) {
         die("ring");
@@ -313,7 +372,7 @@ int main(int argc, char **argv)
         "hsb-echo: %s port %d gid %d (%u.%u.%u.%u, %s), UC QP 0x%06x, ring %u x %u B rkey 0x%08x; "
         "waiting on tcp %d\n",
         devname, ib_port, gid_index, host_ip >> 24, (host_ip >> 16) & 255, (host_ip >> 8) & 255,
-        host_ip & 255, netdev, qp->qp_num, slots, RING_PITCH, mr->rkey, tcp_port);
+        host_ip & 255, netdev, qp->qp_num, slots, pitch, mr->rkey, tcp_port);
     fflush(stdout);
     int fd = accept(ls, NULL, NULL);
     if (fd < 0) {
@@ -326,7 +385,7 @@ int main(int argc, char **argv)
         .qpn = qp->qp_num,
         .rkey = mr->rkey,
         .ring_iova = 0,
-        .ring_pitch = RING_PITCH,
+        .ring_pitch = pitch,
         .ring_slots = slots,
         .ip = host_ip,
         .imm = (uint16_t)imm,
@@ -340,7 +399,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "hsb-echo: bad handshake\n");
         return 1;
     }
-    if (fo.reply_bytes == 0 || fo.reply_bytes > 64 || fo.frame_bytes > RING_PITCH) {
+    if (fo.reply_bytes == 0 || fo.reply_bytes > 64 || fo.frame_bytes > pitch ||
+        (cuqr && fo.reply_bytes < sizeof(struct cuqr_response))) {
         fprintf(stderr, "hsb-echo: controller asks for %u-byte replies / %u-byte frames\n",
                 fo.reply_bytes, fo.frame_bytes);
         return 1;
@@ -376,24 +436,25 @@ int main(int argc, char **argv)
     if (write_full(fd, &rd, sizeof(rd))) {
         die("handshake ready");
     }
-    printf("hsb-echo: session up, replies to %u.%u.%u.%u QP %u, %u-byte frames, %u-byte replies\n",
+    printf("hsb-echo: session up, replies to %u.%u.%u.%u QP %u, %u-byte frames, %u-byte "
+           "replies%s\n",
            fo.ip >> 24, (fo.ip >> 16) & 255, (fo.ip >> 8) & 255, fo.ip & 255, fo.qpn,
-           fo.frame_bytes, fo.reply_bytes);
+           fo.frame_bytes, fo.reply_bytes, cuqr ? ", CUQR" : "");
     fflush(stdout);
 
     /* ---- echo loop ------------------------------------------------------------------- */
-    uint64_t served = 0, recvd = 0, errors = 0;
+    uint64_t served = 0, recvd = 0, errors = 0, rejected = 0;
     unsigned inflight = 0;         /* sends posted and not yet known complete */
     uint32_t slot = 0, expect = 1; /* hwhs stamps seq 1 in the first round after its reset */
     struct ibv_wc wc[16];
 
     for (uint64_t spin = 0;; spin++) {
-        if (seq_at(ring, slot, fo.seq_off) == expect) {
+        if (!cuqr && seq_at(ring, pitch, slot, fo.seq_off) == expect) {
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
 
             /* reply: the slot's first reply_bytes, inline; every SIGNAL_EVERY-th send signaled */
             int sig = (served + 1) % SIGNAL_EVERY == 0;
-            struct ibv_sge sge = {.addr = (uintptr_t)(ring + (size_t)slot * RING_PITCH),
+            struct ibv_sge sge = {.addr = (uintptr_t)(ring + (size_t)slot * pitch),
                                   .length = fo.reply_bytes,
                                   .lkey = mr->lkey};
             struct ibv_send_wr wr = {.wr_id = served,
@@ -415,11 +476,13 @@ int main(int argc, char **argv)
             continue;
         }
 
-        /* Idle */
-        cpu_relax();
+        /* Idle (CUQR waits on receive completions instead) */
+        if (!cuqr) {
+            cpu_relax();
+        }
 
         /* Receive completions, one per WRITE_WITH_IMM: due after each reply */
-        if (imm && (recvd < served || (spin & 0x1FFF) == 0)) {
+        if (imm && (cuqr || recvd < served || (spin & 0x1FFF) == 0)) {
             int n = ibv_poll_cq(rcq, 16, wc);
             if (n < 0) {
                 die("ibv_poll_cq");
@@ -430,9 +493,23 @@ int main(int argc, char **argv)
                             ibv_wc_status_str(wc[i].status), wc[i].opcode);
                     errors++;
                 }
-                else if (++recvd > served && seq_at(ring, slot, fo.seq_off) != expect) {
+                else if (cuqr) {
+                    /* the request is in memory once its completion is seen */
+                    uint32_t s = (ntohl(wc[i].imm_data) & 0xFFFu) % slots;
+                    int sig = (served + 1) % SIGNAL_EVERY == 0;
+                    while (inflight >= MAX_SEND) {
+                        reap_send(scq, &inflight, &errors);
+                    }
+                    if (reply_cuqr(qp, ring + (size_t)s * pitch, fo.frame_bytes, fo.reply_bytes,
+                                   served, sig)) {
+                        rejected++;
+                    }
+                    inflight++;
+                    served++;
+                }
+                else if (++recvd > served && seq_at(ring, pitch, slot, fo.seq_off) != expect) {
                     slot = (ntohl(wc[i].imm_data) & 0xFFFu) % slots;
-                    expect = seq_at(ring, slot, fo.seq_off);
+                    expect = seq_at(ring, pitch, slot, fo.seq_off);
                 }
                 post_recvs(qp, 1);
             }
@@ -452,6 +529,9 @@ int main(int argc, char **argv)
 
     printf("hsb-echo: session closed after %" PRIu64 " replies, %" PRIu64 " errors\n", served,
            errors);
+    if (cuqr) {
+        printf("hsb-echo: %" PRIu64 " CUQR requests answered with status -1\n", rejected);
+    }
     close(fd);
     close(ls);
     ibv_destroy_qp(qp);
