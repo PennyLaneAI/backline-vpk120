@@ -4,14 +4,19 @@
  * mrmac-up - bring the VPK120 MRMAC 100G link up from user space (HSB owns the MAC's AXIS,
  * so there is no netdev). Same register sequence as the ERNIC build's xilinx_axienet driver:
  *
- *   MAC   reset, 100G mode, RS-FEC (528,514), CONFIG_RX/TX, release
+ *   MAC   reset, 100G mode, FEC (-f), CONFIG_RX/TX, release
  *   GT    reset all lanes (gtctrl GPIO), wait for reset-done, RX-datapath reset
  *   link  clear latched status, wait for RX alignment (one RX-datapath reset retry),
  *         then PCS block lock
  *
  * No pause frames: HSB does not use flow control.
  *
- *   mrmac-up [-s] [-t timeout_s]      -s: only print the link status
+ *   mrmac-up [-s] [-t timeout_s] [-f rs|mark|off]
+ *     -s  only print the link status
+ *     -f  FEC:
+ *             rs = RS(528,514) (default),
+ *             mark = check and mark errors without correcting them,
+ *             off = no FEC (the far end must have FEC off too)
  */
 #define _GNU_SOURCE
 #include <stdint.h>
@@ -21,6 +26,7 @@
 #include "hwhs.h"
 
 #include <getopt.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -42,7 +48,9 @@
 #define MRMAC_CTL_AXIS_CFG_100G (5u << 9) /* 100G, independent 384-bit */
 #define MRMAC_CTL_SERDES_W_100G (6u << 4)
 #define MRMAC_CTL_PM_TICK (1u << 30)
-#define MRMAC_RSFEC ((1u << 12) | 0x8u) /* TX four-lane PMD | RS-FEC op mode */
+#define MRMAC_FEC_RS ((1u << 12) | 0x8u)          /* TX four-lane PMD | RS-FEC op mode */
+#define MRMAC_FEC_MARK (MRMAC_FEC_RS | (1u << 5)) /* | bypass correction, only marked errors */
+#define MRMAC_FEC_OFF 0x0u
 #define MRMAC_CONFIG_RX_VAL 0x00000403u
 #define MRMAC_CONFIG_TX_VAL 0x01000C07u
 #define MRMAC_RX_ALIGN_MASK ((1u << 16) | (1u << 2) | (1u << 1) | (1u << 0))
@@ -57,6 +65,7 @@
 #define GT_LOCK_MASK 0xFu
 
 static volatile uint32_t *mac, *gt_lock, *gt_ctrl, *gt_rx;
+static uint32_t fec = MRMAC_FEC_RS;
 
 static uint32_t rd(volatile uint32_t *b, uint32_t off) { return b[off / 4]; }
 static void wr(volatile uint32_t *b, uint32_t off, uint32_t v) { b[off / 4] = v; }
@@ -91,7 +100,7 @@ static void mac_reset(void)
     uint32_t mode = rd(mac, MRMAC_MODE);
     mode &= ~(MRMAC_CTL_DATA_RATE_MASK | MRMAC_CTL_AXIS_CFG_MASK | MRMAC_CTL_SERDES_W_MASK);
     mode |= MRMAC_CTL_DATA_RATE_100G | MRMAC_CTL_AXIS_CFG_100G | MRMAC_CTL_SERDES_W_100G;
-    wr(mac, MRMAC_FEC_CONFIG1, MRMAC_RSFEC);
+    wr(mac, MRMAC_FEC_CONFIG1, fec);
     mode |= MRMAC_CTL_PM_TICK;
     wr(mac, MRMAC_MODE, mode);
     wr(mac, MRMAC_CONFIG_RX, MRMAC_CONFIG_RX_VAL);
@@ -125,9 +134,9 @@ static void print_status(void)
     uint32_t rx = rd(mac, MRMAC_RX_STS), tx = rd(mac, MRMAC_TX_STS),
              bl = rd(mac, MRMAC_STATRX_BLKLCK);
     printf("MRMAC: RX_STS 0x%08x (status %u aligned %u) BLKLCK 0x%05x TX_STS 0x%08x GT reset done "
-           "0x%x\n",
+           "0x%x FEC_CONFIG1 0x%04x\n",
            rx, rx & 1, (rx >> 1) & 1, bl & MRMAC_RX_100G_BLKLCK_MASK, tx,
-           rd(gt_lock, GPIO_DATA) & GT_LOCK_MASK);
+           rd(gt_lock, GPIO_DATA) & GT_LOCK_MASK, rd(mac, MRMAC_FEC_CONFIG1));
 }
 
 static int wait_link(double timeout_s)
@@ -168,7 +177,7 @@ int main(int argc, char **argv)
     int status_only = 0, c;
     double timeout_s = 16.0; /* XCMAC_RX_ALIGN_TIME_OUT */
 
-    while ((c = getopt(argc, argv, "st:")) != -1) {
+    while ((c = getopt(argc, argv, "st:f:")) != -1) {
         switch (c) {
         case 's':
             status_only = 1;
@@ -176,8 +185,20 @@ int main(int argc, char **argv)
         case 't':
             timeout_s = atof(optarg);
             break;
+        case 'f':
+            if (!strcmp(optarg, "rs")) {
+                fec = MRMAC_FEC_RS;
+            } else if (!strcmp(optarg, "mark")) {
+                fec = MRMAC_FEC_MARK;
+            } else if (!strcmp(optarg, "off")) {
+                fec = MRMAC_FEC_OFF;
+            } else {
+                fprintf(stderr, "mrmac-up: -f takes rs, mark or off\n");
+                return 2;
+            }
+            break;
         default:
-            fprintf(stderr, "usage: mrmac-up [-s] [-t timeout_s]\n");
+            fprintf(stderr, "usage: mrmac-up [-s] [-t timeout_s] [-f rs|mark|off]\n");
             return 2;
         }
     }
