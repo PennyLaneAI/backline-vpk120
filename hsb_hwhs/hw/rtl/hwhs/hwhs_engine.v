@@ -153,7 +153,7 @@ module hwhs_engine #(
     reg                   rx_in_pkt;    // inside a multi-beat sensor-TX packet
     reg  [63:0]           t_start;      // free_cnt when the round started
     reg  [31:0]           exp_seq;      // seq the reply must carry
-    reg  [C_BEAT_DW-1:0]  reply_beat;   // the reply, or the zero beat of a timed-out demo round
+    reg  [C_BEAT_DW-1:0]  reply_beat;   // first beat of the last packet seen in WAIT
     reg                   trace_push;   // hand this round's RTT to the trace writer
     reg  [C_TRACE_DW-1:0] trace_value;
     reg  [C_TRACE_AW-1:0] trace_ptr;
@@ -166,7 +166,7 @@ module hwhs_engine #(
     assign slot_addr    = ring_idx;     // port B reads this slot all the time; RD/RD2 wait out its latency
     assign reply_addr   = ring_idx;     // the reply goes to the request's slot
     assign reply_din    = reply_beat;
-    assign m_axis_tdata = reply_beat;
+    assign m_axis_tdata = round_ok ? reply_beat : {C_BEAT_DW{1'b0}};  // 0 for timed-out
 
     // ------------------------------------------------------------ //
     // Events
@@ -286,8 +286,7 @@ module hwhs_engine #(
     end
 
     always @(posedge clk) begin
-        if (got_reply)        reply_beat <= sif_tx_tdata;
-        else if (got_timeout) reply_beat <= {C_BEAT_DW{1'b0}};
+        if (go && (state == S_WAIT) && rx_sop) reply_beat <= sif_tx_tdata;
     end
 
     // ------------------------------------------------------------ //
