@@ -548,6 +548,22 @@ module tb_hwhs_engine;
     demo_recv(0, beat);
     check(beat == '0 && sts_timeout_cnt == to0 + 1, "zero beat on timeout");
 
+    $display("-- hw-loop timeout after a stray packet: still a zero beat");
+    drop_next = 1;
+    to0    = sts_timeout_cnt;
+    stale0 = sts_stale_cnt;
+    demo_send(req(202));
+    tick(20);
+    begin
+      logic [BEAT_DW-1:0] stray;
+      stray = last_req;
+      stray[LANE*32 +: 32] = last_req[LANE*32 +: 32] + 32'd7;
+      hsb_send({{(3*BEAT_DW){1'b0}}, stray}, 1, cyc);
+    end
+    demo_recv(0, beat);
+    check(beat == '0 && sts_timeout_cnt == to0 + 1 && sts_stale_cnt == stale0 + 1,
+          "zero beat on timeout");
+
     $display("-- demo stops while the engine offers s_axis");
     tick(5);
     check(u_dut.state == S_DEMO_RX && s_axis_tready, "offering s_axis");
